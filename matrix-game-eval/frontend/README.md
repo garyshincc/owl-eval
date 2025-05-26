@@ -195,6 +195,99 @@ CMD ["npm", "start"]
 - `NEXT_PUBLIC_API_URL` - Backend API URL (if still using Python backend)
 - `NEXT_PUBLIC_BASE_URL` - Frontend base URL (for Prolific callbacks)
 
+## Setting Up a New Experiment
+
+### 1. Generate Videos with Python Backend
+First, use the Python backend to generate comparison videos:
+
+```bash
+# From the matrix-game-eval directory
+python scripts/cli.py generate-videos \
+  --models model1 model2 \
+  --scenarios forest desert ocean \
+  --output-dir data/experiments/my-experiment
+```
+
+### 2. Create Experiment in Database
+Use the interactive CLI to create a new experiment:
+
+```bash
+# From the frontend directory
+npm run experiment create
+
+# Or with options
+npm run experiment create --name "Winter 2025 Study" --slug "winter-2025"
+```
+
+The CLI will:
+- Guide you through experiment setup
+- Auto-generate a unique slug if not provided (e.g., `cosmic-study-x8k2n9p1`)
+- Configure models and scenarios
+- Create the experiment in draft status
+
+You can also use Prisma Studio for manual creation:
+```bash
+npm run db:studio
+```
+
+### 3. Import Comparisons
+Import the generated video comparisons into the database, linking them to your experiment ID.
+
+### 4. Configure Prolific Study
+1. Create a study on Prolific
+2. Set the study URL to: `https://yourdomain.com/evaluate/[experiment-slug]`
+3. Add the Prolific Study ID to your experiment
+4. Configure participant requirements and payment
+
+### 5. Launch Experiment
+Use the CLI to launch your experiment:
+
+```bash
+# Launch experiment
+npm run experiment launch winter-2025-study
+
+# With Prolific study ID
+npm run experiment launch winter-2025-study --prolific-id YOUR_PROLIFIC_STUDY_ID
+```
+
+This will:
+- Change status from `draft` to `active`
+- Set the start timestamp
+- Link the Prolific study ID
+- Make the experiment available to participants
+
+Monitor progress in the admin dashboard at `/admin`
+
+### Experiment URLs
+Each experiment has its own evaluation URL:
+- Evaluation page: `/evaluate/[experiment-slug]`
+- Direct comparison: `/evaluate/[experiment-slug]?participant=[prolific-id]`
+
+### Managing Multiple Experiments
+- Each experiment has a unique slug for concurrent studies
+- Participants are tracked per experiment
+- Results are isolated by experiment
+- Admin dashboard shows all experiments
+
+### CLI Commands
+```bash
+# Create new experiment
+npm run experiment create
+
+# List all experiments
+npm run experiment list
+npm run experiment list --status active
+
+# Launch experiment
+npm run experiment launch <slug>
+
+# View experiment stats
+npm run experiment stats <slug>
+
+# Complete experiment
+npm run experiment complete <slug>
+```
+
 ## Migration Notes
 
 This version introduces major changes:

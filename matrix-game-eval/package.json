@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@types/node": "^22.15.21",
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0"
+  }
+}

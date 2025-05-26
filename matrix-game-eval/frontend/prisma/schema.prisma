@@ -8,10 +8,12 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // For SQLite in development, change provider to "sqlite"
 }
 
 model Experiment {
   id              String   @id @default(cuid())
+  slug            String   @unique
   name            String
   description     String?
   status          String   @default("draft") // draft, active, completed, archived
@@ -25,6 +27,8 @@ model Experiment {
   comparisons     Comparison[]
   participants    Participant[]
   evaluations     Evaluation[]
+  
+  @@index([slug])
 }
 
 model Comparison {
