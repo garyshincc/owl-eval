@@ -98,23 +98,14 @@ export default function EvaluatePage() {
 
   const fetchComparison = useCallback(async () => {
     try {
-      // In a real app, this would fetch from your API
-      // For now, we'll create mock data
-      const mockComparison: Comparison = {
-        comparison_id: params.id as string,
-        scenario_id: 'forest_navigation',
-        scenario_metadata: {
-          name: 'Forest Navigation',
-          description: 'Navigate through a forest environment with obstacles'
-        },
-        model_a_video_path: '/videos/model_a.mp4',
-        model_b_video_path: '/videos/model_b.mp4',
-        randomized_labels: {
-          A: 'matrix_game',
-          B: 'baseline'
-        }
+      const response = await fetch(`/api/comparisons/${params.id}`)
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch comparison')
       }
-      setComparison(mockComparison)
+      
+      const data = await response.json()
+      setComparison(data)
     } catch (error) {
       console.error('Error fetching comparison:', error)
       toast({
