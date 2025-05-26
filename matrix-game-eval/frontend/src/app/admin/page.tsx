@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useUser } from '@stackframe/stack'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -23,9 +24,34 @@ interface ModelPerformance {
 }
 
 export default function AdminPage() {
+  const user = useUser()
   const [stats, setStats] = useState<EvaluationStats | null>(null)
   const [performance, setPerformance] = useState<ModelPerformance[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Check if user is admin (you can customize this logic)
+  const isAdmin = user && user.serverMetadata?.isAdmin === true
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <h1 className="text-2xl font-bold">Admin Access Required</h1>
+        <p className="text-gray-600">Please sign in to access the admin dashboard.</p>
+        <a href="/handler/sign-in" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+          Sign In
+        </a>
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <h1 className="text-2xl font-bold">Access Denied</h1>
+        <p className="text-gray-600">You don't have admin permissions to access this page.</p>
+      </div>
+    )
+  }
 
   useEffect(() => {
     fetchData()
