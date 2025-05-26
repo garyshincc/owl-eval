@@ -179,6 +179,11 @@ export default function EvaluatePage() {
         detailedRatings[dimension] = value
       })
 
+      // Get participant info if this is a Prolific session
+      const participantId = sessionStorage.getItem('participant_id')
+      const experimentId = sessionStorage.getItem('experiment_id')
+      const prolificPid = sessionStorage.getItem('prolific_pid')
+      
       await fetch('/api/submit-evaluation', {
         method: 'POST',
         headers: {
@@ -188,7 +193,10 @@ export default function EvaluatePage() {
           comparison_id: params.id,
           dimension_scores: dimensionScores,
           detailed_ratings: detailedRatings,
-          completion_time_seconds: (Date.now() - startTime) / 1000
+          completion_time_seconds: (Date.now() - startTime) / 1000,
+          participant_id: participantId,
+          experiment_id: experimentId,
+          evaluator_id: prolificPid || 'anonymous'
         })
       })
 
@@ -200,7 +208,7 @@ export default function EvaluatePage() {
       // Check if this is a Prolific session
       const isProlific = sessionStorage.getItem('is_prolific')
       if (isProlific) {
-        router.push('/prolific/next')
+        router.push('/prolific/complete')
       } else {
         router.push('/thank-you')
       }

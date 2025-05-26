@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { PrismaClient } from '@prisma/client';
 import { Command } from 'commander';
 import { generateSlug, isValidSlug, slugify } from '../frontend/src/lib/utils/slug';
 import * as readline from 'readline';
@@ -8,15 +7,28 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import chalk from 'chalk';
+import * as dotenv from 'dotenv';
+import { requireAuth, clearAuth } from './auth';
+import { prisma } from './prisma-client';
 
-const prisma = new PrismaClient();
+// Load environment variables
+dotenv.config({ path: path.join(__dirname, '../frontend/.env.local') });
+dotenv.config({ path: path.join(__dirname, '../frontend/.env') });
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+// Create readline interface lazily to avoid conflicts with auth
+let rl: readline.Interface | null = null;
+let question: (prompt: string) => Promise<string>;
 
-const question = promisify(rl.question).bind(rl);
+function getReadline() {
+  if (!rl) {
+    rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    question = promisify(rl.question).bind(rl);
+  }
+  return { rl, question };
+}
 
 const program = new Command();
 
@@ -33,9 +45,12 @@ program
   .option('-s, --slug <slug>', 'URL-friendly slug (auto-generated if not provided)')
   .option('-d, --description <description>', 'Experiment description')
   .action(async (options) => {
-    console.log(chalk.blue.bold('\n🧪 Creating a new experiment\n'));
+    await requireAuth('create experiments', async (auth) => {
+      console.log(chalk.blue.bold('\n🧪 Creating a new experiment\n'));
 
-    try {
+      try {
+      const { rl, question } = getReadline();
+      
       // Interactive prompts
       const name = options.name || await question(chalk.cyan('Experiment name: '));
       
@@ -77,6 +92,7 @@ program
           slug,
           description: description || null,
           status: 'draft',
+          createdBy: auth.userId,
           config: {
             models,
             scenarios,
@@ -103,12 +119,15 @@ program
       console.log(chalk.gray('2. Import comparisons using: experiment-cli import-comparisons'));
       console.log(chalk.gray('3. Launch experiment using: experiment-cli launch'));
       
-    } catch (error) {
-      console.error(chalk.red('Error creating experiment:'), error);
-    } finally {
-      rl.close();
-      await prisma.$disconnect();
-    }
+      } catch (error) {
+        console.error(chalk.red('Error creating experiment:'), error);
+      } finally {
+        if (rl) {
+          rl.close();
+        }
+        await prisma.$disconnect();
+      }
+    }, true); // Require admin permissions
   });
 
 // List experiments command
@@ -171,7 +190,8 @@ program
   .description('Launch an experiment (change status to active)')
   .option('-p, --prolific-id <id>', 'Prolific study ID')
   .action(async (slug, options) => {
-    try {
+    await requireAuth('launch experiments', async (auth) => {
+      try {
       const updateData: any = { status: 'active', startedAt: new Date() };
       
       if (options.prolificId) {
@@ -192,14 +212,15 @@ program
         console.log(chalk.white('\nProlific Study ID:'), chalk.cyan(experiment.prolificStudyId));
       }
       
-      console.log(chalk.white('\nEvaluation URL:'), 
-        chalk.blue.underline(`https://yourdomain.com/evaluate/${experiment.slug}`));
-      
-    } catch (error) {
-      console.error(chalk.red('Error launching experiment:'), error);
-    } finally {
-      await prisma.$disconnect();
-    }
+        console.log(chalk.white('\nEvaluation URL:'), 
+          chalk.blue.underline(`https://yourdomain.com/evaluate/${experiment.slug}`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error launching experiment:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true); // Require admin permissions
   });
 
 // Complete experiment command
@@ -207,8 +228,9 @@ program
   .command('complete <slug>')
   .description('Mark an experiment as completed')
   .action(async (slug) => {
-    try {
-      const experiment = await prisma.experiment.update({
+    await requireAuth('complete experiments', async (auth) => {
+      try {
+        const experiment = await prisma.experiment.update({
         where: { slug },
         data: { 
           status: 'completed',
@@ -218,13 +240,14 @@ program
       
       console.log(chalk.green.bold('\n✅ Experiment completed!\n'));
       console.log(chalk.white('Name:'), chalk.yellow(experiment.name));
-      console.log(chalk.white('Completed:'), chalk.yellow(experiment.completedAt?.toLocaleString()));
-      
-    } catch (error) {
-      console.error(chalk.red('Error completing experiment:'), error);
-    } finally {
-      await prisma.$disconnect();
-    }
+        console.log(chalk.white('Completed:'), chalk.yellow(experiment.completedAt?.toLocaleString()));
+        
+      } catch (error) {
+        console.error(chalk.red('Error completing experiment:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true); // Require admin permissions
   });
 
 // Stats command
@@ -232,8 +255,9 @@ program
   .command('stats <slug>')
   .description('Show experiment statistics')
   .action(async (slug) => {
-    try {
-      const experiment = await prisma.experiment.findUnique({
+    await requireAuth('view experiment stats', async (auth) => {
+      try {
+        const experiment = await prisma.experiment.findUnique({
         where: { slug },
         include: {
           _count: {
@@ -276,15 +300,24 @@ program
           .reduce((sum, e) => sum + (e.completionTimeSeconds || 0), 0) / 
           experiment.evaluations.filter(e => e.completionTimeSeconds).length;
         
-        console.log(chalk.white('Avg Completion Time:'), 
-          chalk.yellow(`${(avgCompletionTime / 60).toFixed(1)} minutes`));
+          console.log(chalk.white('Avg Completion Time:'), 
+            chalk.yellow(`${(avgCompletionTime / 60).toFixed(1)} minutes`));
+        }
+        
+      } catch (error) {
+        console.error(chalk.red('Error getting stats:'), error);
+      } finally {
+        await prisma.$disconnect();
       }
-      
-    } catch (error) {
-      console.error(chalk.red('Error getting stats:'), error);
-    } finally {
-      await prisma.$disconnect();
-    }
+    }, true); // Require admin permissions
+  });
+
+// Logout command
+program
+  .command('logout')
+  .description('Clear stored authentication')
+  .action(async () => {
+    await clearAuth();
   });
 
 program.parse();

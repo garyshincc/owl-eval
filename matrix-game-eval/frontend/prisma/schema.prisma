@@ -19,6 +19,7 @@ model Experiment {
   status          String   @default("draft") // draft, active, completed, archived
   prolificStudyId String?  @unique
   config          Json     // Stores experiment configuration (models, scenarios, parameters)
+  createdBy       String?  // Stack Auth user ID
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   startedAt       DateTime?

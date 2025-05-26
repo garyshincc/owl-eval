@@ -1,32 +1,84 @@
 import { NextResponse } from 'next/server'
-import { ABTestingFramework } from '@/lib/evaluation/ab-testing'
-import { getConfig } from '@/lib/config'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(request: Request) {
   try {
     const data = await request.json()
     
-    if (!data.comparison_id) {
-      return NextResponse.json({ error: 'Missing comparison_id' }, { status: 400 })
+    // Validate required fields
+    if (!data.comparison_id || !data.dimension_scores) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: comparison_id and dimension_scores' 
+      }, { status: 400 })
     }
     
-    const config = getConfig()
-    const framework = new ABTestingFramework(config.outputDir)
+    // Determine the chosen model based on dimension scores
+    let chosenModel = 'Equal'
+    const scores = Object.values(data.dimension_scores) as string[]
+    const aCount = scores.filter(s => s === 'A').length
+    const bCount = scores.filter(s => s === 'B').length
     
-    const result = await framework.recordEvaluationResult({
-      comparison_id: data.comparison_id,
-      evaluator_id: data.evaluator_id || 'anonymous',
-      dimension_scores: data.dimension_scores || {},
-      detailed_ratings: data.detailed_ratings || {},
-      completion_time_seconds: data.completion_time_seconds || 0
+    if (aCount > bCount) {
+      chosenModel = 'A'
+    } else if (bCount > aCount) {
+      chosenModel = 'B'
+    }
+    
+    // Create evaluation record in database
+    const evaluation = await prisma.evaluation.create({
+      data: {
+        comparisonId: data.comparison_id,
+        participantId: data.participant_id || null,
+        experimentId: data.experiment_id || null,
+        chosenModel: chosenModel,
+        dimensionScores: data.dimension_scores,
+        completionTimeSeconds: data.completion_time_seconds || null,
+        clientMetadata: {
+          evaluatorId: data.evaluator_id || 'anonymous',
+          detailedRatings: data.detailed_ratings || {},
+          submittedAt: new Date().toISOString()
+        }
+      }
     })
+    
+    // If this is a Prolific participant, check if they've completed all assigned comparisons
+    if (data.participant_id) {
+      const participant = await prisma.participant.findUnique({
+        where: { id: data.participant_id },
+        include: {
+          evaluations: true
+        }
+      })
+      
+      if (participant) {
+        const assignedComparisons = participant.assignedComparisons as string[]
+        const completedComparisons = participant.evaluations.map(e => e.comparisonId)
+        
+        // Check if all assigned comparisons are completed
+        const allCompleted = assignedComparisons.every(compId => 
+          completedComparisons.includes(compId)
+        )
+        
+        if (allCompleted && participant.status !== 'completed') {
+          await prisma.participant.update({
+            where: { id: data.participant_id },
+            data: {
+              status: 'completed',
+              completedAt: new Date()
+            }
+          })
+        }
+      }
+    }
     
     return NextResponse.json({
       success: true,
-      result_id: result.result_id
+      evaluation_id: evaluation.id
     })
   } catch (error) {
     console.error('Error submitting evaluation:', error)
-    return NextResponse.json({ error: 'Failed to submit evaluation' }, { status: 500 })
+    return NextResponse.json({ 
+      error: 'Failed to submit evaluation' 
+    }, { status: 500 })
   }
 }

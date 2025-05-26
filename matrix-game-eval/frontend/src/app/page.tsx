@@ -18,14 +18,27 @@ interface Comparison {
 export default function Home() {
   const [comparisons, setComparisons] = useState<Comparison[]>([])
   const [loading, setLoading] = useState(true)
+  const [isProlific, setIsProlific] = useState(false)
 
   useEffect(() => {
+    // Check if this is a Prolific session
+    const prolificSession = sessionStorage.getItem('is_prolific')
+    if (prolificSession) {
+      setIsProlific(true)
+    }
+    
     fetchComparisons()
   }, [])
 
   const fetchComparisons = async () => {
     try {
-      const response = await fetch('/api/comparisons')
+      // Include experiment ID if this is a Prolific session
+      const experimentId = sessionStorage.getItem('experiment_id')
+      const url = experimentId 
+        ? `/api/comparisons?experimentId=${experimentId}`
+        : '/api/comparisons'
+        
+      const response = await fetch(url)
       const data = await response.json()
       setComparisons(data)
     } catch (error) {
@@ -74,6 +87,11 @@ export default function Home() {
               <li>Please watch both videos completely before making your judgments</li>
               <li>There are no right or wrong answers - we want your honest opinion</li>
               <li>Use a modern browser (Chrome, Firefox, Safari) for best experience</li>
+              {isProlific && (
+                <li className="font-semibold text-primary">
+                  Complete all evaluations to receive your completion code
+                </li>
+              )}
             </ul>
           </div>
         </CardContent>

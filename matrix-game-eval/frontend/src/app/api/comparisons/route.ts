@@ -1,28 +1,56 @@
 import { NextResponse } from 'next/server'
-import { ABTestingFramework } from '@/lib/evaluation/ab-testing'
-import { getConfig } from '@/lib/config'
+import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const config = getConfig()
-    const framework = new ABTestingFramework(config.outputDir)
+    // Get experiment ID from session storage if this is a Prolific participant
+    const url = new URL(request.url)
+    const experimentId = url.searchParams.get('experimentId')
     
-    const comparisons = await framework.getAllComparisons()
+    let comparisons
     
-    const comparisonList = await Promise.all(
-      comparisons.map(async (comparison) => {
-        const results = await framework.getResultsForComparison(comparison.comparison_id)
-        return {
-          comparison_id: comparison.comparison_id,
-          scenario_id: comparison.scenario_id,
-          created_at: comparison.created_at,
-          num_evaluations: results.length,
-          evaluation_url: `/evaluate/${comparison.comparison_id}`
-        }
+    if (experimentId) {
+      // Get comparisons for specific experiment
+      comparisons = await prisma.comparison.findMany({
+        where: { experimentId },
+        include: {
+          _count: {
+            select: { evaluations: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
       })
-    )
+    } else {
+      // Get all active experiments' comparisons for non-Prolific users
+      const activeExperiments = await prisma.experiment.findMany({
+        where: { status: 'active' },
+        select: { id: true }
+      })
+      
+      comparisons = await prisma.comparison.findMany({
+        where: {
+          experimentId: {
+            in: activeExperiments.map(e => e.id)
+          }
+        },
+        include: {
+          _count: {
+            select: { evaluations: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+    }
+    
+    const comparisonList = comparisons.map(comparison => ({
+      comparison_id: comparison.id,
+      scenario_id: comparison.scenarioId,
+      created_at: comparison.createdAt.toISOString(),
+      num_evaluations: comparison._count.evaluations,
+      evaluation_url: `/evaluate/${comparison.id}`
+    }))
     
     return NextResponse.json(comparisonList)
   } catch (error) {

@@ -131,10 +131,33 @@ src/
 - **Evaluation**: Individual participant responses
 
 ### Prolific Integration
-- Captures and validates Prolific participant IDs
-- Tracks completion status and generates completion codes
+
+#### How It Works
+1. **Entry Point**: Participants arrive at `/prolific?PROLIFIC_PID=xxx&STUDY_ID=xxx&SESSION_ID=xxx`
+2. **Session Validation**: The app validates the Prolific IDs and creates/updates participant records
+3. **Evaluation Flow**: Participants complete evaluations with their session tracked
+4. **Completion**: After all evaluations, participants are redirected to `/prolific/complete`
+5. **Return to Prolific**: Completion page shows code and redirects to `https://app.prolific.com/submissions/complete?cc={code}`
+
+#### Key Features
+- Validates Prolific ID format (24 characters, lowercase a-f and numbers)
+- Generates unique 8-character completion codes per participant
+- Tracks participant status (active, completed, rejected)
 - Associates all evaluations with specific participants
 - Supports experiment-level participant assignment
+- Stores session metadata for debugging
+
+#### URL Parameters
+The following parameters are captured from Prolific:
+- `PROLIFIC_PID`: Unique participant identifier
+- `STUDY_ID`: Prolific study ID (must match experiment's `prolificStudyId`)
+- `SESSION_ID`: Unique session identifier for validation
+
+#### Database Integration
+- Participant records created automatically on first access
+- Completion codes generated and stored per participant
+- All evaluations linked to participant and experiment IDs
+- Session tracking for audit trail
 
 ## Development
 
@@ -185,15 +208,21 @@ CMD ["npm", "start"]
 
 ## Environment Variables
 
-### Required
+### Required for Production
 - `NEXT_PUBLIC_STACK_PROJECT_ID` - Stack Auth project ID
 - `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` - Stack Auth client key
 - `STACK_SECRET_SERVER_KEY` - Stack Auth server secret
 - `DATABASE_URL` - PostgreSQL connection string (Neon format)
 
+### Optional (Development Mode)
+If Stack Auth variables are not set:
+- Admin dashboard runs without authentication
+- CLI commands skip authentication with a warning
+- Useful for local development and testing
+
 ### Legacy (from file-based system)
 - `NEXT_PUBLIC_API_URL` - Backend API URL (if still using Python backend)
-- `NEXT_PUBLIC_BASE_URL` - Frontend base URL (for Prolific callbacks)
+- `NEXT_PUBLIC_BASE_URL` - Frontend base URL (for Prolific callbacks and CLI auth)
 
 ## Setting Up a New Experiment
 
@@ -220,10 +249,13 @@ npm run experiment create --name "Winter 2025 Study" --slug "winter-2025"
 ```
 
 The CLI will:
+- **Require authentication** via Stack Auth (opens browser for login)
 - Guide you through experiment setup
 - Auto-generate a unique slug if not provided (e.g., `cosmic-study-x8k2n9p1`)
 - Configure models and scenarios
 - Create the experiment in draft status
+
+**Note**: In development mode (without Stack Auth configured), authentication is skipped with a warning.
 
 You can also use Prisma Studio for manual creation:
 ```bash
@@ -235,9 +267,10 @@ Import the generated video comparisons into the database, linking them to your e
 
 ### 4. Configure Prolific Study
 1. Create a study on Prolific
-2. Set the study URL to: `https://yourdomain.com/evaluate/[experiment-slug]`
-3. Add the Prolific Study ID to your experiment
+2. Set the study URL to: `https://yourdomain.com/prolific?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}`
+3. Add the Prolific Study ID to your experiment in the database
 4. Configure participant requirements and payment
+5. Set appropriate completion time estimate
 
 ### 5. Launch Experiment
 Use the CLI to launch your experiment:
@@ -259,9 +292,11 @@ This will:
 Monitor progress in the admin dashboard at `/admin`
 
 ### Experiment URLs
-Each experiment has its own evaluation URL:
-- Evaluation page: `/evaluate/[experiment-slug]`
-- Direct comparison: `/evaluate/[experiment-slug]?participant=[prolific-id]`
+Each experiment has its own URLs:
+- Prolific entry: `/prolific?PROLIFIC_PID=xxx&STUDY_ID=xxx&SESSION_ID=xxx`
+- Main study page: `/` (after session initialization)
+- Evaluation pages: `/evaluate/[comparison-id]`
+- Completion page: `/prolific/complete` (Prolific participants only)
 
 ### Managing Multiple Experiments
 - Each experiment has a unique slug for concurrent studies
@@ -271,22 +306,47 @@ Each experiment has its own evaluation URL:
 
 ### CLI Commands
 ```bash
-# Create new experiment
+# Create new experiment (requires authentication)
 npm run experiment create
 
-# List all experiments
+# List all experiments (no authentication required)
 npm run experiment list
 npm run experiment list --status active
 
-# Launch experiment
+# Launch experiment (requires authentication)
 npm run experiment launch <slug>
 
-# View experiment stats
+# View experiment stats (requires authentication)
 npm run experiment stats <slug>
 
-# Complete experiment
+# Complete experiment (requires authentication)
 npm run experiment complete <slug>
+
+# Clear stored authentication
+npm run experiment logout
 ```
+
+### CLI Authentication
+
+The experiment CLI uses Stack Auth for authentication:
+
+1. **First-time use**: When running commands that require authentication, the CLI will:
+   - Open your browser to sign in with Stack Auth
+   - Wait for you to complete authentication
+   - Store authentication tokens locally for 7 days
+
+2. **Subsequent uses**: Authentication is cached locally, no browser needed
+
+3. **Development mode**: If Stack Auth environment variables are not configured:
+   - Authentication is skipped
+   - A warning message indicates you're in dev mode
+   - All operations proceed without authentication
+
+4. **Admin requirement**: All authenticated operations require admin permissions
+   - Users must have `isAdmin: true` in their Stack Auth metadata
+   - Non-admin users will be denied access
+
+5. **Logout**: Clear stored credentials with `npm run experiment logout`
 
 ## Migration Notes
 
