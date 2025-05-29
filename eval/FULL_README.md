@@ -1,63 +1,135 @@
-# OWL Human Evaluation Framework - Complete Documentation
+# OWL Human Evaluation Framework - Complete Technical Documentation
 
-A comprehensive framework for conducting human evaluations of diffusion world models through A/B testing and comparative analysis. This framework features a modern Next.js frontend with integrated backend functionality.
+A comprehensive, production-ready framework for conducting rigorous human evaluations of diffusion world models through A/B testing, comparative analysis, and large-scale crowd-sourced studies. Built with modern web technologies for scalability, reliability, and ease of use.
 
-## Architecture Overview
+## System Architecture
+
+The OWL framework is designed as a modern, full-stack application with clear separation of concerns and modular architecture:
 
 ```
 eval/
-├── frontend/               # Next.js web application
-├── backend_api.py         # Flask REST API server
-├── models/                # Model interfaces and loaders
-├── evaluation/            # Evaluation framework
-├── analysis/              # Statistical analysis tools
-├── prolific/              # Prolific platform integration
-├── scripts/               # CLI utilities
-└── configs/               # Configuration files
+├── frontend/                    # Next.js 14 full-stack application
+│   ├── src/app/                # App Router with integrated API
+│   ├── src/components/         # Reusable UI components
+│   ├── src/lib/               # Core business logic
+│   ├── prisma/                # Database schema and migrations
+│   └── public/                # Static assets and video library
+├── models/                     # Model interfaces and loaders
+├── evaluation/                 # Evaluation framework and criteria
+├── analysis/                   # Statistical analysis and reporting
+├── prolific/                   # Prolific platform integration
+├── scripts/                    # CLI utilities and automation
+└── configs/                    # Configuration management
 ```
 
-## Getting Started
+### Technology Stack
+
+- **Frontend**: Next.js 14 with App Router, TypeScript, Tailwind CSS, Radix UI
+- **Backend**: Next.js API Routes (serverless-ready)
+- **Database**: Prisma ORM with PostgreSQL (production) / SQLite (development)
+- **Authentication**: Built-in session management
+- **File Storage**: Local filesystem with cloud storage support
+- **Analytics**: Real-time statistics with chart visualizations
+- **Deployment**: Docker, Vercel, or any Node.js hosting platform
+
+## Complete Setup Guide
 
 ### Prerequisites
 
-- Python 3.8+
-- Node.js 18+
-- GPU (optional, for running actual models)
+- **Node.js 18+** (required for frontend and CLI tools)
+- **Python 3.8+** (required for data generation and analysis)
+- **PostgreSQL** (recommended for production) or SQLite (for development)
+- **Git** (for version control)
+- **Docker** (optional, for containerized deployment)
 
-### Quick Setup
+### Development Environment Setup
 
-1. **Clone and setup backend:**
+#### 1. Repository Setup
 ```bash
-cd eval
-pip install -r requirements.txt
+git clone <your-repository-url>
+cd owl-eval/eval
 ```
 
-2. **Setup frontend:**
+#### 2. Frontend Application Setup
 ```bash
 cd frontend
 npm install
+
+# Configure environment
 cp .env.local.example .env.local
+# Edit .env.local with your specific configuration
 ```
 
-3. **Start services:**
-
-Backend API:
+#### 3. Database Setup
 ```bash
-python backend_api.py
+# Generate Prisma client
+npx prisma generate
+
+# Set up database (development)
+npx prisma db push
+
+# Or run migrations (production)
+npx prisma migrate deploy
 ```
 
-Frontend (in another terminal):
+#### 4. Python Environment Setup
+```bash
+cd ..  # Back to eval/
+pip install -r requirements.txt
+
+# Or using virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+#### 5. Start Development Server
 ```bash
 cd frontend
 npm run dev
 ```
 
-Access the application at http://localhost:3000
+Access at:
+- **Main Application**: http://localhost:3000
+- **Admin Dashboard**: http://localhost:3000/admin
+- **API Documentation**: http://localhost:3000/api/health
 
-### Docker Setup
+### Production Deployment
 
+#### Option 1: Docker Deployment (Recommended)
 ```bash
-docker-compose up
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+#### Option 2: Manual Deployment
+```bash
+# Build frontend
+cd frontend
+npm run build
+
+# Start production server
+npm start
+
+# Or use PM2 for process management
+npm install -g pm2
+pm2 start npm --name "owl-eval" -- start
+```
+
+#### Option 3: Cloud Deployment (Vercel)
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Deploy
+cd frontend
+vercel --prod
 ```
 
 ## System Components

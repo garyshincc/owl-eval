@@ -1,71 +1,108 @@
 # OWL Human Evaluation Framework
 
-A comprehensive Next.js-based platform for conducting human evaluations of diffusion world models through A/B testing and comparative analysis.
+A comprehensive Next.js-based platform for conducting rigorous human evaluations of diffusion world models through A/B testing, comparative analysis, and large-scale crowd-sourced studies.
 
 ## Overview
 
-This framework provides a modern web interface for A/B testing diffusion world models through:
-- Side-by-side video comparison with synchronized playback
-- Structured evaluation across four key dimensions
-- Real-time progress tracking and analytics
-- Integrated Prolific support for large-scale human evaluation studies
-- CLI tools for automated experiment management and study deployment
+The OWL evaluation framework provides a modern, full-stack solution for evaluating AI-generated videos from diffusion world models. It combines sophisticated evaluation methodologies with an intuitive web interface to deliver reliable, statistically significant results.
 
-## Architecture
+### Key Capabilities
 
-The entire application is built with **Next.js 14**, using:
-- **App Router** for modern React Server Components
-- **API Routes** for backend functionality (no separate backend needed!)
-- **TypeScript** for type safety
-- **Tailwind CSS** + **Radix UI** for beautiful, accessible components
-- **File-based data storage** for simplicity (easily swappable for a database)
+- **Synchronized Video Comparison**: Side-by-side playback with frame-perfect synchronization
+- **Multi-dimensional Evaluation**: Structured rating across four research-validated dimensions
+- **Real-time Analytics**: Live progress tracking with statistical confidence intervals
+- **Prolific Integration**: Automated study creation and management for crowd-sourcing
+- **CLI Automation**: Powerful command-line tools for experiment lifecycle management
+- **Statistical Rigor**: Built-in tools for inter-rater reliability and significance testing
+
+## Modern Architecture
+
+Built entirely with **Next.js 14** for optimal performance and developer experience:
+
+- **App Router**: Modern React Server Components architecture
+- **Integrated API**: Backend functionality through API routes (no separate server needed)
+- **TypeScript**: Full type safety across frontend and backend
+- **Tailwind CSS + Radix UI**: Beautiful, accessible components with consistent design
+- **Prisma ORM**: Type-safe database operations with automatic migrations
+- **Edge Runtime**: Optimized for serverless deployment
 
 ```
 eval/
-├── frontend/                    # Next.js application
+├── frontend/                    # Next.js 14 application
 │   ├── src/
-│   │   ├── app/                # Pages and API routes
-│   │   ├── components/         # Reusable UI components
-│   │   └── lib/               # Core logic (evaluation, analysis)
-│   └── public/                # Static assets
+│   │   ├── app/                # App Router pages and API routes
+│   │   │   ├── api/           # Backend API endpoints
+│   │   │   ├── admin/         # Admin dashboard
+│   │   │   ├── evaluate/      # Evaluation interface
+│   │   │   └── prolific/      # Prolific integration flows
+│   │   ├── components/        # Reusable UI components
+│   │   │   ├── admin/         # Admin-specific components
+│   │   │   └── ui/           # Base UI components
+│   │   ├── lib/              # Core business logic
+│   │   │   ├── evaluation/   # A/B testing framework
+│   │   │   └── analysis/     # Statistical analysis
+│   │   └── types/            # TypeScript definitions
+│   ├── prisma/               # Database schema and migrations
+│   └── public/               # Static assets and videos
 ├── models/                    # Model interfaces and loaders
-├── evaluation/                # Evaluation framework and criteria
-├── scripts/                   # CLI tools for experiment management
-├── prolific/                  # Prolific integration
-├── analysis/                  # Statistical analysis tools
+├── evaluation/                # Evaluation criteria and test scenarios
+├── scripts/                   # CLI tools and automation
+├── prolific/                  # Prolific platform integration
+├── analysis/                  # Advanced statistical analysis
 └── data/                     # Generated evaluations and results
 ```
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- Python 3.8+ (only for generating test data)
+- Node.js 18+ (required)
+- Python 3.8+ (for CLI tools and data generation)
+- PostgreSQL (for production) or SQLite (for development)
 
-### Installation & Running
+### Development Setup
 
-1. **Clone and install:**
+1. **Install dependencies:**
 ```bash
 cd eval/frontend
 npm install
+cd ..
+pip install -r requirements.txt
 ```
 
-2. **Set up environment:**
+2. **Configure environment:**
 ```bash
+cd frontend
 cp .env.local.example .env.local
+# Edit .env.local with your database and API settings
 ```
 
-3. **Run the development server:**
+3. **Set up database:**
+```bash
+cd frontend
+npx prisma generate
+npx prisma db push
+```
+
+4. **Start development server:**
 ```bash
 npm run dev
 ```
 
-Access the application at http://localhost:3000
+5. **Access the application:**
+   - Main interface: http://localhost:3000
+   - Admin dashboard: http://localhost:3000/admin
 
-### Docker Deployment
+### Production Deployment
 
 ```bash
-docker-compose up
+# Using Docker Compose
+cd eval
+docker-compose up -d
+
+# Or manual deployment
+cd frontend
+npm run build
+npm start
 ```
 
 ## Key Features

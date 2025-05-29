@@ -1,16 +1,20 @@
-# OWL Evaluation Frontend
+# OWL Frontend - Next.js Evaluation Platform
 
-Next.js-based frontend for the OWL human evaluation platform with Stack Auth authentication and PostgreSQL database.
+The frontend component of the OWL Human Evaluation Framework, built with Next.js 14 to provide a modern, performant, and scalable web interface for conducting human evaluations of diffusion world models.
 
-## Features
+## Overview
 
-- Side-by-side video comparison interface
-- Four-dimension evaluation system
-- Real-time progress tracking
-- **Password-protected admin dashboard** with Stack Auth
-- **Prolific participant tracking** with database persistence
-- **Experiment management** with PostgreSQL + Prisma
-- Sign-in only authentication (no public sign-up)
+This Next.js application serves as both the frontend interface and backend API for the evaluation platform. It provides a complete solution for conducting rigorous human evaluations of AI-generated videos with modern web technologies.
+
+## Key Features
+
+- **Synchronized Video Comparison**: Frame-perfect dual video playback with intuitive controls
+- **Multi-dimensional Evaluation**: Research-validated four-dimension rating system
+- **Real-time Analytics**: Live progress tracking with statistical visualizations
+- **Stack Auth Integration**: Password-protected admin dashboard with role-based access
+- **Prolific Support**: Complete participant tracking and study management
+- **Database-driven**: PostgreSQL + Prisma for reliable data persistence
+- **Modern Architecture**: Next.js 14 with App Router and TypeScript
 
 ## Prerequisites
 
