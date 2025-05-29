@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: eval/frontend/package-lock.json
       
       # Authenticate to Google Cloud using Workload Identity Federation
       - name: Authenticate to Google Cloud
@@ -51,15 +51,15 @@ jobs:
       
       # Build and test
       - name: Install dependencies
-        working-directory: ./frontend
+        working-directory: ./eval/frontend
         run: npm ci
       
       - name: Run linter
-        working-directory: ./frontend
+        working-directory: ./eval/frontend
         run: npm run lint
       
       - name: Build application
-        working-directory: ./frontend
+        working-directory: ./eval/frontend
         run: npm run build
         env:
           NODE_ENV: production
@@ -70,7 +70,7 @@ jobs:
           docker build \
             --tag "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}" \
             --tag "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:latest" \
-            ./frontend
+            ./eval/frontend
       
       - name: Push Docker image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
