@@ -54,6 +54,7 @@ interface ExperimentData {
   name: string
   description: string
   slug: string
+  group: string
   comparisons: Comparison[]
 }
 
@@ -75,6 +76,7 @@ export function CreateExperimentWizard({
     name: '',
     description: '',
     slug: '',
+    group: '',
     comparisons: []
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -201,6 +203,7 @@ export function CreateExperimentWizard({
         name: '',
         description: '',
         slug: '',
+        group: '',
         comparisons: []
       })
       setCurrentStep(0)
@@ -265,7 +268,7 @@ export function CreateExperimentWizard({
               <span 
                 key={step.id}
                 className={`font-medium ${
-                  index <= currentStep ? 'text-blue-600' : 'text-gray-400'
+                  index <= currentStep ? 'text-primary' : 'text-muted-foreground'
                 }`}
               >
                 {step.title}
@@ -328,6 +331,18 @@ export function CreateExperimentWizard({
                 </div>
               </div>
               <div className="space-y-2">
+                <Label htmlFor="exp-group">Group (optional)</Label>
+                <Input
+                  id="exp-group"
+                  placeholder="e.g., research-phase-1, pilot-study"
+                  value={experiment.group}
+                  onChange={(e) => setExperiment(prev => ({ ...prev, group: e.target.value }))}
+                />
+                <p className="text-xs text-gray-500">
+                  Group experiments together for organization and filtering
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="exp-description">Description</Label>
                 <Textarea
                   id="exp-description"
@@ -360,8 +375,8 @@ export function CreateExperimentWizard({
               )}
 
               {experiment.comparisons.length === 0 ? (
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <p className="text-gray-500 mb-4">No comparisons yet</p>
+                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                  <p className="text-muted-foreground mb-4">No comparisons yet</p>
                   <Button onClick={addComparison} variant="outline">
                     <Plus className="h-4 w-4 mr-2" />
                     Add Your First Comparison
@@ -422,12 +437,12 @@ export function CreateExperimentWizard({
 
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Model A Video <span className="text-red-500">*</span></Label>
+                          <Label>Model A Video <span className="text-destructive">*</span></Label>
                           <select
                             value={comparison.videoAUrl}
                             onChange={(e) => updateComparison(comparison.id, 'videoAUrl', e.target.value)}
-                            className={`w-full px-3 py-2 border rounded-md text-sm ${
-                              errors[`comp-${index}-videoA`] ? 'border-red-500' : 'border-gray-300'
+                            className={`w-full px-3 py-2 border rounded-md text-sm bg-background text-foreground ${
+                              errors[`comp-${index}-videoA`] ? 'border-destructive' : 'border-border'
                             }`}
                           >
                             <option value="">Select video for Model A</option>
@@ -438,16 +453,16 @@ export function CreateExperimentWizard({
                             ))}
                           </select>
                           {errors[`comp-${index}-videoA`] && (
-                            <p className="text-xs text-red-500">{errors[`comp-${index}-videoA`]}</p>
+                            <p className="text-xs text-destructive">{errors[`comp-${index}-videoA`]}</p>
                           )}
                         </div>
                         <div className="space-y-2">
-                          <Label>Model B Video <span className="text-red-500">*</span></Label>
+                          <Label>Model B Video <span className="text-destructive">*</span></Label>
                           <select
                             value={comparison.videoBUrl}
                             onChange={(e) => updateComparison(comparison.id, 'videoBUrl', e.target.value)}
-                            className={`w-full px-3 py-2 border rounded-md text-sm ${
-                              errors[`comp-${index}-videoB`] ? 'border-red-500' : 'border-gray-300'
+                            className={`w-full px-3 py-2 border rounded-md text-sm bg-background text-foreground ${
+                              errors[`comp-${index}-videoB`] ? 'border-destructive' : 'border-border'
                             }`}
                           >
                             <option value="">Select video for Model B</option>
@@ -471,31 +486,37 @@ export function CreateExperimentWizard({
 
           {currentStep === 2 && (
             <div className="space-y-6">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="bg-secondary/10 border border-secondary/20 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <h3 className="font-semibold text-green-900">Ready to Create</h3>
+                  <CheckCircle className="h-5 w-5 text-secondary" />
+                  <h3 className="font-semibold text-secondary">Ready to Create</h3>
                 </div>
-                <p className="text-sm text-green-700">
-                  Review your experiment details below and click "Create Experiment" when ready.
+                <p className="text-sm text-secondary">
+                  Review your experiment details below and click &quot;Create Experiment&quot; when ready.
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <h4 className="font-medium mb-2">Experiment Details</h4>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                  <div className="bg-muted/30 rounded-lg p-4 space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Name:</span>
+                      <span className="text-sm text-muted-foreground">Name:</span>
                       <span className="text-sm font-medium">{experiment.name}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Slug:</span>
-                      <code className="text-sm bg-gray-200 px-1 rounded">{experiment.slug}</code>
+                      <span className="text-sm text-muted-foreground">Slug:</span>
+                      <code className="text-sm bg-muted px-1 rounded">{experiment.slug}</code>
                     </div>
+                    {experiment.group && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Group:</span>
+                        <span className="text-sm font-medium">{experiment.group}</span>
+                      </div>
+                    )}
                     {experiment.description && (
                       <div className="pt-2 border-t">
-                        <span className="text-sm text-gray-600">Description:</span>
+                        <span className="text-sm text-muted-foreground">Description:</span>
                         <p className="text-sm mt-1">{experiment.description}</p>
                       </div>
                     )}
@@ -508,13 +529,13 @@ export function CreateExperimentWizard({
                   </h4>
                   <div className="space-y-2">
                     {experiment.comparisons.map((comp, index) => (
-                      <div key={comp.id} className="bg-gray-50 rounded-lg p-3">
+                      <div key={comp.id} className="bg-muted/30 rounded-lg p-3">
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
                             <p className="text-sm font-medium">
                               {comp.modelA} vs {comp.modelB}
                             </p>
-                            <p className="text-xs text-gray-600">
+                            <p className="text-xs text-muted-foreground">
                               Scenario: {comp.scenarioId}
                             </p>
                           </div>

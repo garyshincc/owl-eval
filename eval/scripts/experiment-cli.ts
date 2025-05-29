@@ -44,6 +44,7 @@ program
   .option('-n, --name <name>', 'Experiment name')
   .option('-s, --slug <slug>', 'URL-friendly slug (auto-generated if not provided)')
   .option('-d, --description <description>', 'Experiment description')
+  .option('-g, --group <group>', 'Experiment group for organization')
   .action(async (options) => {
     await requireAuth('create experiments', async (auth) => {
       console.log(chalk.blue.bold('\n🧪 Creating a new experiment\n'));
@@ -72,6 +73,9 @@ program
       const description = options.description || 
         await question(chalk.cyan('Description (optional): '));
       
+      const group = options.group || 
+        await question(chalk.cyan('Group (optional): '));
+      
       // Model configuration
       console.log(chalk.blue('\n📊 Model Configuration'));
       const modelsInput = await question(
@@ -91,6 +95,7 @@ program
           name,
           slug,
           description: description || null,
+          group: group || null,
           status: 'draft',
           createdBy: auth.userId,
           config: {
@@ -111,6 +116,9 @@ program
       console.log(chalk.white('ID:'), chalk.yellow(experiment.id));
       console.log(chalk.white('Slug:'), chalk.yellow(experiment.slug));
       console.log(chalk.white('Status:'), chalk.yellow(experiment.status));
+      if (experiment.group) {
+        console.log(chalk.white('Group:'), chalk.yellow(experiment.group));
+      }
       console.log(chalk.white('\nEvaluation URL:'), 
         chalk.blue.underline(`https://yourdomain.com/evaluate/${experiment.slug}`));
       
@@ -167,6 +175,9 @@ program
           
           console.log(chalk.bold.white(`${exp.name} (${exp.slug})`));
           console.log(chalk[statusColor](`  Status: ${exp.status}`));
+          if (exp.group) {
+            console.log(chalk.gray(`  Group: ${exp.group}`));
+          }
           console.log(chalk.gray(`  Created: ${exp.createdAt.toLocaleDateString()}`));
           console.log(chalk.gray(`  Comparisons: ${exp._count.comparisons}`));
           console.log(chalk.gray(`  Participants: ${exp._count.participants}`));
@@ -187,33 +198,106 @@ program
 // Launch experiment command
 program
   .command('launch <slug>')
-  .description('Launch an experiment (change status to active)')
-  .option('-p, --prolific-id <id>', 'Prolific study ID')
+  .description('Launch an experiment (change status to active and optionally create Prolific study)')
+  .option('-p, --prolific', 'Create a Prolific study')
+  .option('--prolific-title <title>', 'Prolific study title')
+  .option('--prolific-description <description>', 'Prolific study description')
+  .option('--prolific-reward <reward>', 'Reward per participant (USD)', '8.00')
+  .option('--prolific-participants <count>', 'Number of participants', '50')
   .action(async (slug, options) => {
     await requireAuth('launch experiments', async (auth) => {
       try {
-      const updateData: any = { status: 'active', startedAt: new Date() };
-      
-      if (options.prolificId) {
-        updateData.prolificStudyId = options.prolificId;
-      }
-      
-      const experiment = await prisma.experiment.update({
-        where: { slug },
-        data: updateData,
-      });
-      
-      console.log(chalk.green.bold('\n🚀 Experiment launched!\n'));
-      console.log(chalk.white('Name:'), chalk.yellow(experiment.name));
-      console.log(chalk.white('Status:'), chalk.green('active'));
-      console.log(chalk.white('Started:'), chalk.yellow(experiment.startedAt?.toLocaleString()));
-      
-      if (experiment.prolificStudyId) {
-        console.log(chalk.white('\nProlific Study ID:'), chalk.cyan(experiment.prolificStudyId));
-      }
-      
-        console.log(chalk.white('\nEvaluation URL:'), 
-          chalk.blue.underline(`https://${process.env.NEXT_PUBLIC_BASE_URL}/evaluate/${experiment.slug}`));
+        // First get the experiment
+        const experiment = await prisma.experiment.findUnique({
+          where: { slug },
+          include: {
+            _count: {
+              select: {
+                comparisons: true
+              }
+            }
+          }
+        });
+        
+        if (!experiment) {
+          console.log(chalk.red(`Experiment "${slug}" not found`));
+          return;
+        }
+        
+        let prolificStudyId: string | null = null;
+        let prolificUrl: string | null = null;
+        
+        // Create Prolific study if requested
+        if (options.prolific) {
+          console.log(chalk.blue('\n🌐 Creating Prolific study...\n'));
+          
+          try {
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL;
+            if (!baseUrl) {
+              throw new Error('NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_BASE_URL, or BASE_URL must be set');
+            }
+            
+            const prolificData = {
+              experimentId: experiment.id,
+              title: options.prolificTitle || `Evaluate ${experiment.name}`,
+              description: options.prolificDescription || `Help us evaluate AI model outputs for ${experiment.name}`,
+              reward: parseFloat(options.prolificReward),
+              totalParticipants: parseInt(options.prolificParticipants)
+            };
+            
+            const response = await fetch(`${baseUrl}/api/prolific/studies`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(prolificData)
+            });
+            
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.error || 'Failed to create Prolific study');
+            }
+            
+            const result = await response.json();
+            prolificStudyId = result.studyId;
+            prolificUrl = `https://app.prolific.co/researcher/studies/${prolificStudyId}`;
+            
+            console.log(chalk.green('✅ Prolific study created successfully!'));
+            console.log(chalk.white('Study ID:'), chalk.cyan(prolificStudyId));
+            
+          } catch (error) {
+            console.log(chalk.red('❌ Failed to create Prolific study:'), error.message);
+            console.log(chalk.gray('You can create it manually later through the admin interface.'));
+          }
+        }
+        
+        // Update experiment status
+        const updateData: any = { 
+          status: 'active', 
+          startedAt: new Date()
+        };
+        
+        if (prolificStudyId) {
+          updateData.prolificStudyId = prolificStudyId;
+        }
+        
+        const updatedExperiment = await prisma.experiment.update({
+          where: { slug },
+          data: updateData,
+        });
+        
+        console.log(chalk.green.bold('\n🚀 Experiment launched!\n'));
+        console.log(chalk.white('Name:'), chalk.yellow(updatedExperiment.name));
+        console.log(chalk.white('Status:'), chalk.green('active'));
+        console.log(chalk.white('Started:'), chalk.yellow(updatedExperiment.startedAt?.toLocaleString()));
+        
+        if (updatedExperiment.prolificStudyId) {
+          const studyUrl = prolificUrl || `https://app.prolific.co/researcher/studies/${updatedExperiment.prolificStudyId}`;
+          console.log(chalk.white('\nProlific Study:'), chalk.cyan.underline(studyUrl));
+        }
+        
+        const evaluationUrl = `https://${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL}/evaluate/${updatedExperiment.slug}`;
+        console.log(chalk.white('Evaluation URL:'), chalk.blue.underline(evaluationUrl));
         
       } catch (error) {
         console.error(chalk.red('Error launching experiment:'), error);
@@ -397,10 +481,11 @@ program
           // Auto-assign based on filename patterns
           console.log(chalk.blue('\n🤖 Auto-assigning videos based on filename patterns...\n'));
           
-          const models = experiment.config?.models || [];
-          const scenarios = experiment.config?.scenarios || [];
+          const config = experiment.config as any;
+          const models = config?.models || [];
+          const scenarios = config?.scenarios || [];
           
-          const comparisons = [];
+          const comparisons: any[] = [];
           
           for (const scenario of scenarios) {
             for (let i = 0; i < models.length; i++) {
@@ -445,7 +530,12 @@ program
             // Create comparisons
             await prisma.comparison.createMany({
               data: comparisons.map(comp => ({
-                ...comp,
+                scenarioId: comp.scenarioId,
+                modelA: comp.modelA,
+                modelB: comp.modelB,
+                videoAPath: comp.videoAPath,
+                videoBPath: comp.videoBPath,
+                metadata: comp.metadata,
                 experimentId: experiment.id
               }))
             });

@@ -3,22 +3,46 @@ import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Get total counts
+    // Get group filter from URL params
+    const { searchParams } = new URL(request.url)
+    const groupFilter = searchParams.get('group')
+    
+    // Build where clause for filtering
+    const whereClause = {
+      experiment: {
+        archived: false,
+        ...(groupFilter && { group: groupFilter })
+      }
+    }
+    
+    // Get total counts - only completed evaluations from non-archived experiments
     const [totalComparisons, totalEvaluations] = await Promise.all([
-      prisma.comparison.count(),
-      prisma.evaluation.count()
+      prisma.comparison.count({
+        where: whereClause
+      }),
+      prisma.evaluation.count({
+        where: {
+          status: 'completed',
+          ...whereClause
+        }
+      })
     ])
 
-    // Get evaluations by scenario using a simpler approach
+    // Get evaluations by scenario using a simpler approach - only completed evaluations from non-archived experiments
     const comparisons = await prisma.comparison.findMany({
+      where: whereClause,
       select: {
         id: true,
         scenarioId: true,
         _count: {
           select: {
-            evaluations: true
+            evaluations: {
+              where: {
+                status: 'completed'
+              }
+            }
           }
         }
       }

@@ -17,6 +17,8 @@ model Experiment {
   name            String
   description     String?
   status          String   @default("draft") // draft, active, completed, archived
+  archived        Boolean  @default(false)
+  group           String?  // Optional experiment group for organization
   prolificStudyId String?  @unique
   config          Json     // Stores experiment configuration (models, scenarios, parameters)
   createdBy       String?  // Stack Auth user ID
@@ -24,6 +26,7 @@ model Experiment {
   updatedAt       DateTime @updatedAt
   startedAt       DateTime?
   completedAt     DateTime?
+  archivedAt      DateTime?
   
   comparisons     Comparison[]
   participants    Participant[]
@@ -73,10 +76,12 @@ model Evaluation {
   comparisonId          String
   participantId         String
   experimentId          String
-  chosenModel           String   // A or B
+  chosenModel           String?  // A or B (nullable for drafts)
   dimensionScores       Json     // Stores all dimension scores
   completionTimeSeconds Float?
   clientMetadata        Json?    // Browser info, etc.
+  status                String   @default("draft") // draft, completed
+  lastSavedAt           DateTime @updatedAt
   createdAt             DateTime @default(now())
   
   comparison            Comparison  @relation(fields: [comparisonId], references: [id])
@@ -87,4 +92,5 @@ model Evaluation {
   @@index([comparisonId])
   @@index([participantId])
   @@index([experimentId])
+  @@index([status])
 }

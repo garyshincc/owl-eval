@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ProlificClient:
     """Client for interacting with Prolific API."""
     
-    BASE_URL = "https://api.prolific.co"
+    BASE_URL = "https://api.prolific.com"
     
     def __init__(self, api_token: Optional[str] = None):
         """

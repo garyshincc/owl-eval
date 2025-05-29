@@ -103,9 +103,9 @@ export function ScenarioSelector({ value, onChange, placeholder = "Select or cre
 
       {/* Current scenario info */}
       {currentScenario && (
-        <div className="flex items-center gap-2 text-sm text-gray-600">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="outline">{currentScenario.category}</Badge>
-          <span>{currentScenario.name}</span>
+          <span className="truncate">{currentScenario.name}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -118,15 +118,15 @@ export function ScenarioSelector({ value, onChange, placeholder = "Select or cre
 
       {/* Custom scenario indicator */}
       {isCustomScenario && (
-        <div className="flex items-center gap-2 text-sm text-gray-600">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="outline">custom</Badge>
-          <span>Custom scenario: {value}</span>
+          <span className="truncate">Custom scenario: {value}</span>
         </div>
       )}
 
       {/* Scenario browser dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Choose Scenario</DialogTitle>
             <DialogDescription>
@@ -134,12 +134,12 @@ export function ScenarioSelector({ value, onChange, placeholder = "Select or cre
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 mt-4">
+          <div className="space-y-4 mt-4 flex-1 overflow-y-auto">
             {/* Search and filters */}
             <div className="flex gap-4">
               <div className="flex-1">
                 <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search scenarios..."
                     value={searchTerm}
@@ -164,19 +164,19 @@ export function ScenarioSelector({ value, onChange, placeholder = "Select or cre
             </div>
 
             {/* Predefined scenarios */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
               {filteredScenarios.map(scenario => (
                 <div
                   key={scenario.id}
-                  className="border rounded-lg p-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                  className="border rounded-lg p-3 cursor-pointer hover:bg-muted/30 transition-colors border-border hover:border-muted-foreground"
                   onClick={() => {
                     handleScenarioSelect(scenario.id)
                     setShowCreateDialog(false)
                   }}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-medium text-sm">{scenario.name}</h4>
-                    <div className="flex gap-1">
+                  <div className="flex justify-between items-start mb-2 gap-2">
+                    <h4 className="font-medium text-sm truncate flex-1">{scenario.name}</h4>
+                    <div className="flex gap-1 flex-shrink-0">
                       <Badge variant="outline" className="text-xs">
                         {scenario.category}
                       </Badge>
@@ -187,7 +187,11 @@ export function ScenarioSelector({ value, onChange, placeholder = "Select or cre
                       ))}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-600 mb-2">{scenario.description}</p>
+                  <p className="text-xs text-muted-foreground mb-2 overflow-hidden" style={{
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical'
+                  }}>{scenario.description}</p>
                   <div className="flex flex-wrap gap-1">
                     {scenario.evaluationFocus.map(focus => (
                       <Badge key={focus} variant="outline" className="text-xs">
@@ -258,7 +262,7 @@ export function ScenarioSelector({ value, onChange, placeholder = "Select or cre
             <div className="space-y-4 mt-4">
               <div>
                 <h4 className="font-medium mb-2">Description</h4>
-                <p className="text-sm text-gray-600">{selectedScenario.description}</p>
+                <p className="text-sm text-muted-foreground">{selectedScenario.description}</p>
               </div>
               
               <div className="space-y-4">

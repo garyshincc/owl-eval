@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -105,13 +105,13 @@ export function VideoLibraryManager({
     return (
       <Card>
         <CardHeader>
-          <div className="h-6 bg-gray-200 rounded w-1/4 animate-pulse"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+          <div className="h-6 bg-muted rounded w-1/4 animate-pulse"></div>
+          <div className="h-4 bg-muted rounded w-1/2 animate-pulse"></div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="aspect-video bg-gray-200 rounded animate-pulse"></div>
+              <div key={i} className="aspect-video bg-muted rounded animate-pulse"></div>
             ))}
           </div>
         </CardContent>
@@ -124,18 +124,18 @@ export function VideoLibraryManager({
       <CardHeader>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-slate-100">
               <Upload className="h-5 w-5" />
               Video Library
-              <Badge variant="secondary" className="ml-2">
+              <Badge variant="secondary" className="ml-2 bg-slate-700 text-slate-300 border-slate-600">
                 {uploadedVideos.length}
               </Badge>
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-slate-300">
               Upload and manage videos for experiments
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={onRefresh}>
+          <Button variant="outline" size="sm" onClick={onRefresh} className="border-slate-600 text-slate-200 hover:bg-slate-700">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -143,7 +143,7 @@ export function VideoLibraryManager({
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Upload Section */}
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 bg-gray-50 hover:bg-gray-100 transition-colors">
+        <div className="border-2 border-dashed border-slate-600/50 rounded-lg p-8 bg-slate-800/20 hover:bg-slate-800/30 transition-colors">
           <input
             type="file"
             accept="video/*"
@@ -156,12 +156,12 @@ export function VideoLibraryManager({
             htmlFor="video-library-upload"
             className="cursor-pointer flex flex-col items-center"
           >
-            <Upload className="h-12 w-12 text-gray-400 mb-4" />
-            <p className="text-lg font-medium text-gray-700">Upload Videos</p>
-            <p className="text-sm text-gray-500 mt-1">
+            <Upload className="h-12 w-12 text-slate-400 mb-4" />
+            <p className="text-lg font-medium text-slate-200">Upload Videos</p>
+            <p className="text-sm text-slate-300 mt-1">
               Click or drag videos here to upload to the library
             </p>
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-slate-400 mt-2">
               Supports MP4, WebM, MOV and other video formats
             </p>
           </label>
@@ -171,7 +171,7 @@ export function VideoLibraryManager({
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <div className="flex flex-col sm:flex-row gap-2 flex-1">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
                 placeholder="Search videos..."
                 value={searchTerm}
@@ -182,7 +182,7 @@ export function VideoLibraryManager({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'date' | 'name' | 'size')}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              className="px-3 py-2 border border-slate-600 rounded-md text-sm bg-slate-700 text-slate-200 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400"
             >
               <option value="date">Sort by Date</option>
               <option value="name">Sort by Name</option>
@@ -214,28 +214,29 @@ export function VideoLibraryManager({
 
         {/* Selection Actions */}
         {uploadedVideos.length > 0 && (
-          <div className="flex flex-wrap gap-2 items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="flex flex-wrap gap-2 items-center justify-between p-3 bg-slate-800/30 border border-slate-600/50 rounded-lg">
             <div className="flex gap-2">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={selectedVideos.size === uploadedVideos.length ? onClearSelection : onSelectAll}
+                className="border-slate-600 text-slate-200 hover:bg-slate-700"
               >
                 {selectedVideos.size === uploadedVideos.length ? 'Clear All' : 'Select All'}
               </Button>
               {selectedVideos.size > 0 && (
-                <Badge variant="secondary" className="px-2 py-1">
+                <Badge variant="secondary" className="px-2 py-1 bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
                   {selectedVideos.size} selected
                 </Badge>
               )}
             </div>
             {selectedVideos.size > 0 && (
               <div className="flex gap-2">
-                <Button size="sm" onClick={onCopyUrls}>
+                <Button size="sm" onClick={onCopyUrls} className="bg-slate-700 hover:bg-slate-600 text-slate-200">
                   <Copy className="h-4 w-4 mr-2" />
                   Copy URLs ({selectedVideos.size})
                 </Button>
-                <Button size="sm" variant="destructive" onClick={onDeleteSelected}>
+                <Button size="sm" variant="destructive" onClick={onDeleteSelected} className="bg-red-600 hover:bg-red-700 text-white">
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete ({selectedVideos.size})
                 </Button>
@@ -253,17 +254,29 @@ export function VideoLibraryManager({
                   key={video.key}
                   className={`border rounded-lg overflow-hidden cursor-pointer transition-all hover:shadow-md ${
                     selectedVideos.has(video.key) 
-                      ? 'border-blue-500 bg-blue-50 shadow-md' 
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-primary bg-primary/10 shadow-md' 
+                      : 'border-border hover:border-muted-foreground'
                   }`}
                   onClick={() => onVideoSelect(video.key)}
                 >
-                  <div className="relative aspect-video bg-gray-100">
+                  <div className="relative aspect-video bg-muted/30">
                     <video
+                      ref={(el) => {
+                        if (el) {
+                          el.addEventListener('loadedmetadata', () => {
+                            // Seek to 10% of the video duration, or 0.5 seconds, whichever is less
+                            const seekTime = Math.min(el.duration * 0.1, 0.5);
+                            if (!isNaN(seekTime) && seekTime > 0) {
+                              el.currentTime = seekTime;
+                            }
+                          }, { once: true });
+                        }
+                      }}
                       src={video.url}
                       className="w-full h-full object-cover"
                       preload="metadata"
                       crossOrigin="anonymous"
+                      muted
                     />
                     <div className="absolute top-2 left-2">
                       <input
@@ -282,7 +295,7 @@ export function VideoLibraryManager({
                     <p className="font-medium truncate" title={video.name}>
                       {video.name}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       {formatDate(video.uploadedAt)}
                     </p>
                     <div className="flex gap-1 mt-2" onClick={(e) => e.stopPropagation()}>
@@ -332,10 +345,22 @@ export function VideoLibraryManager({
                     
                     <div className="relative flex-shrink-0">
                       <video
+                        ref={(el) => {
+                          if (el) {
+                            el.addEventListener('loadedmetadata', () => {
+                              // Seek to 10% of the video duration, or 0.5 seconds, whichever is less
+                              const seekTime = Math.min(el.duration * 0.1, 0.5);
+                              if (!isNaN(seekTime) && seekTime > 0) {
+                                el.currentTime = seekTime;
+                              }
+                            }, { once: true });
+                          }
+                        }}
                         src={video.url}
                         className="w-24 h-16 object-cover rounded"
                         preload="metadata"
                         crossOrigin="anonymous"
+                        muted
                       />
                     </div>
                     

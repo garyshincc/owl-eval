@@ -10,10 +10,24 @@ interface ModelPerformance {
   num_evaluations: number
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Get all evaluations with their comparison data
+    // Get group filter from URL params
+    const { searchParams } = new URL(request.url)
+    const groupFilter = searchParams.get('group')
+    
+    // Build where clause for filtering
+    const whereClause = {
+      status: 'completed',
+      experiment: {
+        archived: false,
+        ...(groupFilter && { group: groupFilter })
+      }
+    }
+    
+    // Get all completed evaluations with their comparison data from non-archived experiments
     const evaluations = await prisma.evaluation.findMany({
+      where: whereClause,
       include: {
         comparison: true
       }

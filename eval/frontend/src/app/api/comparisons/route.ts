@@ -17,7 +17,13 @@ export async function GET(request: Request) {
         where: { experimentId },
         include: {
           _count: {
-            select: { evaluations: true }
+            select: { 
+              evaluations: {
+                where: {
+                  status: 'completed'
+                }
+              }
+            }
           }
         },
         orderBy: { createdAt: 'desc' }
@@ -37,7 +43,13 @@ export async function GET(request: Request) {
         },
         include: {
           _count: {
-            select: { evaluations: true }
+            select: { 
+              evaluations: {
+                where: {
+                  status: 'completed'
+                }
+              }
+            }
           }
         },
         orderBy: { createdAt: 'desc' }

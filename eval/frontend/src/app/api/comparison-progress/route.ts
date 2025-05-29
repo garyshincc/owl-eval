@@ -15,12 +15,16 @@ interface ComparisonProgress {
 
 export async function GET() {
   try {
-    // Get all comparisons with their evaluation counts
+    // Get all comparisons with their completed evaluation counts
     const comparisons = await prisma.comparison.findMany({
       include: {
         _count: {
           select: {
-            evaluations: true
+            evaluations: {
+              where: {
+                status: 'completed'
+              }
+            }
           }
         }
       },

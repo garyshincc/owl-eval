@@ -1,8 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { 
   ResponsiveContainer, 
   RadarChart, 
@@ -22,7 +30,8 @@ import {
   TrendingUp, 
   Award, 
   Target,
-  BarChart3
+  BarChart3,
+  Filter
 } from 'lucide-react'
 
 interface ModelPerformance {
@@ -35,18 +44,30 @@ interface ModelPerformance {
 interface ModelPerformanceChartProps {
   performance: ModelPerformance[]
   loading?: boolean
+  selectedGroup?: string | null
+  onGroupChange?: (group: string | null) => void
+  experiments?: any[]
 }
 
-export function ModelPerformanceChart({ performance, loading }: ModelPerformanceChartProps) {
+export function ModelPerformanceChart({ performance, loading, selectedGroup, onGroupChange, experiments = [] }: ModelPerformanceChartProps) {
+  const [localSelectedGroup, setLocalSelectedGroup] = useState<string | null>(selectedGroup || null)
+  
+  const handleGroupChange = (group: string | null) => {
+    setLocalSelectedGroup(group)
+    onGroupChange?.(group)
+  }
+  
+  // Get unique groups from experiments
+  const uniqueGroups = Array.from(new Set(experiments.map(exp => exp.group).filter(Boolean)))
   if (loading) {
     return (
       <Card>
         <CardHeader>
-          <div className="h-6 bg-gray-200 rounded w-1/4 animate-pulse"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+          <div className="h-6 bg-muted rounded w-1/4 animate-pulse"></div>
+          <div className="h-4 bg-muted rounded w-1/2 animate-pulse"></div>
         </CardHeader>
         <CardContent>
-          <div className="h-[400px] bg-gray-100 rounded animate-pulse"></div>
+          <div className="h-[400px] bg-muted/50 rounded animate-pulse"></div>
         </CardContent>
       </Card>
     )
@@ -64,9 +85,9 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
         </CardHeader>
         <CardContent className="flex items-center justify-center h-[400px]">
           <div className="text-center">
-            <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No performance data yet</h3>
-            <p className="text-gray-500">
+            <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No performance data yet</h3>
+            <p className="text-muted-foreground">
               Performance metrics will appear here once evaluations are completed
             </p>
           </div>
@@ -111,8 +132,8 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
   // Get unique models for styling
   const models = Array.from(new Set(performance.map(p => p.model)))
   const modelColors = [
-    '#3b82f6', '#ef4444', '#10b981', '#f59e0b', 
-    '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'
+    'hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--chart-4))', 
+    'hsl(var(--chart-5))', 'hsl(var(--chart-3))', 'hsl(var(--destructive))', 'hsl(var(--chart-2))'
   ]
 
   // Calculate overall stats
@@ -133,42 +154,72 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
 
   return (
     <div className="space-y-6">
+      {/* Group Filter */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Filter by Group:</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                {localSelectedGroup || 'All Groups'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => handleGroupChange(null)}>
+                All Groups
+              </DropdownMenuItem>
+              {uniqueGroups.map((group) => (
+                <DropdownMenuItem key={group} onClick={() => handleGroupChange(group)}>
+                  {group}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        {localSelectedGroup && (
+          <Badge variant="secondary" className="text-xs">
+            Showing performance for &quot;{localSelectedGroup}&quot; group
+          </Badge>
+        )}
+      </div>
+      
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+        <Card className="bg-gradient-to-br from-accent/10 to-accent/20 border-accent/20 glow">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-purple-700">Models Evaluated</p>
-                <p className="text-2xl font-bold text-purple-900">{models.length}</p>
+                <p className="text-sm font-medium text-accent">Models Evaluated</p>
+                <p className="text-2xl font-bold text-foreground">{models.length}</p>
               </div>
-              <Award className="h-8 w-8 text-purple-600" />
+              <Award className="h-8 w-8 text-accent" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+        <Card className="bg-gradient-to-br from-primary/10 to-primary/20 border-primary/20 glow">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-blue-700">Total Evaluations</p>
-                <p className="text-2xl font-bold text-blue-900">{totalEvaluations}</p>
+                <p className="text-sm font-medium text-primary">Total Evaluations</p>
+                <p className="text-2xl font-bold text-foreground">{totalEvaluations}</p>
               </div>
-              <Target className="h-8 w-8 text-blue-600" />
+              <Target className="h-8 w-8 text-primary" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+        <Card className="bg-gradient-to-br from-secondary/10 to-secondary/20 border-secondary/20 glow">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-green-700">Top Performer</p>
-                <p className="text-lg font-bold text-green-900 truncate" title={bestPerformingModel?.model}>
+                <p className="text-sm font-medium text-secondary">Top Performer</p>
+                <p className="text-lg font-bold text-foreground truncate" title={bestPerformingModel?.model}>
                   {bestPerformingModel?.model || 'TBD'}
                 </p>
               </div>
-              <TrendingUp className="h-8 w-8 text-green-600" />
+              <TrendingUp className="h-8 w-8 text-secondary" />
             </div>
           </CardContent>
         </Card>
@@ -187,18 +238,19 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
           <CardContent>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={radarData}>
-                  <PolarGrid />
+                <RadarChart data={radarData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                  <PolarGrid stroke="hsl(var(--border))" strokeOpacity={0.3} />
                   <PolarAngleAxis 
                     dataKey="dimension" 
-                    tick={{ fontSize: 12 }}
-                    className="text-gray-600"
+                    tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                    tickFormatter={(value) => value.replace(/_/g, ' ')}
                   />
                   <PolarRadiusAxis 
                     angle={90} 
                     domain={[0, 100]} 
-                    tick={{ fontSize: 10 }}
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                     tickFormatter={(value) => `${value}%`}
+                    stroke="hsl(var(--border))"
                   />
                   {models.map((model, index) => (
                     <Radar
@@ -207,13 +259,29 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
                       dataKey={model}
                       stroke={modelColors[index % modelColors.length]}
                       fill={modelColors[index % modelColors.length]}
-                      fillOpacity={0.25}
+                      fillOpacity={0.15}
                       strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
                     />
                   ))}
                   <Tooltip 
                     formatter={(value: any) => [`${Number(value).toFixed(1)}%`, 'Win Rate']}
                     labelFormatter={(label) => `Dimension: ${label}`}
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '6px',
+                      color: 'hsl(var(--foreground))',
+                      fontSize: '12px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                    labelStyle={{
+                      color: 'hsl(var(--foreground))',
+                      fontWeight: '500'
+                    }}
+                    animationDuration={0}
+                    isAnimationActive={false}
                   />
                 </RadarChart>
               </ResponsiveContainer>
@@ -233,18 +301,20 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={barChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} />
                   <XAxis 
                     dataKey="model_dimension" 
                     angle={-45}
                     textAnchor="end"
                     height={80}
-                    tick={{ fontSize: 10 }}
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    stroke="hsl(var(--border))"
                   />
                   <YAxis 
                     domain={[0, 100]}
                     tickFormatter={(value) => `${value}%`}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                    stroke="hsl(var(--border))"
                   />
                   <Tooltip 
                     formatter={(value: any, name: any, props: any) => [
@@ -256,11 +326,26 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
                       const parts = String(label).split(' - ')
                       return `${parts[0]} - ${parts[1]}`
                     }}
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '6px',
+                      color: 'hsl(var(--foreground))',
+                      fontSize: '12px',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}
+                    labelStyle={{
+                      color: 'hsl(var(--foreground))',
+                      fontWeight: '500'
+                    }}
+                    animationDuration={0}
+                    isAnimationActive={false}
                   />
                   <Bar 
                     dataKey="win_rate" 
-                    fill="#3b82f6"
+                    fill="hsl(var(--primary))"
                     radius={[4, 4, 0, 0]}
+                    isAnimationActive={false}
                   />
                 </BarChart>
               </ResponsiveContainer>

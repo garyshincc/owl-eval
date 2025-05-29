@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth-middleware';
 import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
@@ -83,9 +84,12 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Generate a completion code if not exists
+    // Set the study's completion code if not exists
     if (!participant.completionCode) {
-      const completionCode = generateCompletionCode()
+      // Get the completion code from the experiment config
+      const experimentConfig = experiment.config as any;
+      const completionCode = experimentConfig?.prolificCompletionCode || generateCompletionCode()
+      
       await prisma.participant.update({
         where: { id: participant.id },
         data: { completionCode }

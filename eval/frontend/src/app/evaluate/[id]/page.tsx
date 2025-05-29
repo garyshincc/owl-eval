@@ -20,7 +20,9 @@ import {
   Minimize2,
   Link,
   Unlink,
-  Settings
+  Settings,
+  Save,
+  CheckCircle
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -102,10 +104,24 @@ export default function EvaluatePage() {
   const { toast } = useToast()
   
   const [comparison, setComparison] = useState<Comparison | null>(null)
+  const [actualComparisonId, setActualComparisonId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [responses, setResponses] = useState<Record<string, string>>({})
   const [startTime] = useState(Date.now())
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [saving, setSaving] = useState(false)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Generate or retrieve session ID for anonymous users
+  const getSessionId = useCallback(() => {
+    let sessionId = sessionStorage.getItem('anon_session_id')
+    if (!sessionId) {
+      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      sessionStorage.setItem('anon_session_id', sessionId)
+    }
+    return sessionId
+  }, [])
   
   const videoARef = useRef<HTMLVideoElement>(null)
   const videoBRef = useRef<HTMLVideoElement>(null)
@@ -141,7 +157,10 @@ export default function EvaluatePage() {
               if (comparisons.length > 0) {
                 // Get the first comparison
                 const comparisonId = comparisons[0].comparison_id
+                setActualComparisonId(comparisonId)
                 response = await fetch(`/api/comparisons/${comparisonId}`)
+                // Update the URL to reflect the actual comparison ID
+                window.history.replaceState({}, '', `/evaluate/${comparisonId}`)
               }
             }
           }
@@ -154,6 +173,61 @@ export default function EvaluatePage() {
       
       const data = await response.json()
       setComparison(data)
+      
+      // Set the actual comparison ID if not already set
+      const comparisonId = actualComparisonId || data.comparison_id
+      if (!actualComparisonId) {
+        setActualComparisonId(comparisonId)
+      }
+      
+      // Load any existing draft
+      const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
+      const sessionId = getSessionId()
+      const draftResponse = await fetch(`/api/evaluations/draft?comparisonId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
+      
+      if (draftResponse.ok) {
+        const draftData = await draftResponse.json()
+        if (draftData.draft) {
+          // Check if evaluation is already completed
+          if (draftData.draft.status === 'completed') {
+            toast({
+              title: 'Already Completed',
+              description: 'You have already submitted an evaluation for this comparison',
+              variant: 'destructive'
+            })
+            router.push('/thank-you')
+            return
+          }
+          
+          if (draftData.draft.status === 'draft') {
+            // Check if we have the full responses saved in clientMetadata
+            const savedResponses = draftData.draft.clientMetadata?.responses
+            if (savedResponses) {
+              setResponses(savedResponses)
+            } else {
+              // Fallback to dimension scores if no full responses available
+              const dimensionScores = draftData.draft.dimensionScores || {}
+              const uiResponses: Record<string, string> = {}
+              Object.entries(dimensionScores).forEach(([dimension, score]) => {
+                if (score === 'A') {
+                  uiResponses[dimension] = 'A_slightly_better'
+                } else if (score === 'B') {
+                  uiResponses[dimension] = 'B_slightly_better'
+                } else {
+                  uiResponses[dimension] = 'Equal'
+                }
+              })
+              setResponses(uiResponses)
+            }
+            setLastSaved(new Date(draftData.draft.lastSavedAt))
+            
+            toast({
+              title: 'Draft Loaded',
+              description: 'Your previous progress has been restored',
+            })
+          }
+        }
+      }
     } catch (error) {
       console.error('Error fetching comparison:', error)
       toast({
@@ -164,7 +238,121 @@ export default function EvaluatePage() {
     } finally {
       setLoading(false)
     }
-  }, [params.id, toast])
+  }, [params.id, toast, getSessionId])
+
+  // Auto-save functionality
+  const saveDraft = useCallback(async () => {
+    if (!comparison || Object.keys(responses).length === 0 || submitting) {
+      console.log('Skipping save: no comparison, responses, or currently submitting', { 
+        comparison: !!comparison, 
+        responsesCount: Object.keys(responses).length,
+        submitting
+      })
+      return
+    }
+    
+    console.log('Starting draft save...', { responses })
+    setSaving(true)
+    try {
+      const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
+      const experimentId = sessionStorage.getItem('experiment_id')
+      const prolificPid = sessionStorage.getItem('prolific_pid')
+      const sessionId = getSessionId()
+      
+      const dimensionScores: Record<string, string> = {}
+      Object.entries(responses).forEach(([dimension, value]) => {
+        if (value.includes('A')) {
+          dimensionScores[dimension] = 'A'
+        } else if (value.includes('B')) {
+          dimensionScores[dimension] = 'B'
+        } else {
+          dimensionScores[dimension] = 'Equal'
+        }
+      })
+
+      console.log('Saving draft with data:', {
+        comparisonId: params.id,
+        participantId,
+        sessionId,
+        dimensionScores
+      })
+
+      const response = await fetch('/api/evaluations/draft', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          comparisonId: actualComparisonId || params.id,
+          participantId,
+          experimentId,
+          prolificPid,
+          dimensionScores,
+          completionTimeSeconds: (Date.now() - startTime) / 1000,
+          clientMetadata: {
+            responses,
+            userAgent: navigator.userAgent,
+            sessionId,
+          },
+        }),
+      })
+
+      console.log('Draft save response:', response.status, response.statusText)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('Draft saved successfully:', data)
+        setLastSaved(new Date(data.lastSavedAt))
+        toast({
+          title: 'Progress Saved',
+          description: 'Your evaluation progress has been saved',
+        })
+      } else if (response.status === 409) {
+        // Evaluation already completed
+        toast({
+          title: 'Already Completed',
+          description: 'You have already submitted this evaluation',
+          variant: 'destructive'
+        })
+        router.push('/thank-you')
+        return
+      } else {
+        const errorData = await response.text()
+        console.error('Draft save failed:', response.status, errorData)
+        toast({
+          title: 'Save Failed',
+          description: 'Failed to save progress',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      console.error('Error saving draft:', error)
+      toast({
+        title: 'Save Error',
+        description: 'Network error while saving',
+        variant: 'destructive'
+      })
+    } finally {
+      setSaving(false)
+    }
+  }, [comparison, responses, actualComparisonId, params.id, startTime, getSessionId, toast, router, submitting])
+
+  // Debounced auto-save when responses change
+  useEffect(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      saveDraft()
+    }, 2000) // Save after 2 seconds of inactivity
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [responses, saveDraft])
 
   useEffect(() => {
     fetchComparison()
@@ -364,6 +552,11 @@ export default function EvaluatePage() {
       return
     }
 
+    // Clear any pending auto-save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+
     setSubmitting(true)
     
     try {
@@ -385,34 +578,48 @@ export default function EvaluatePage() {
       const participantId = sessionStorage.getItem('participant_id')
       const experimentId = sessionStorage.getItem('experiment_id')
       const prolificPid = sessionStorage.getItem('prolific_pid')
+      const sessionId = getSessionId()
       
-      await fetch('/api/submit-evaluation', {
+      const submitResponse = await fetch('/api/submit-evaluation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          comparison_id: params.id,
+          comparison_id: actualComparisonId || params.id,
           dimension_scores: dimensionScores,
           detailed_ratings: detailedRatings,
           completion_time_seconds: (Date.now() - startTime) / 1000,
           participant_id: participantId,
           experiment_id: experimentId,
-          evaluator_id: prolificPid || 'anonymous'
+          evaluator_id: prolificPid || 'anonymous',
+          session_id: sessionId
         })
       })
+
+      const submitResult = await submitResponse.json()
 
       toast({
         title: 'Success',
         description: 'Your evaluation has been submitted'
       })
 
-      // Check if this is a Prolific session
-      const isProlific = sessionStorage.getItem('is_prolific')
-      if (isProlific) {
-        router.push('/prolific/complete')
+      // Check if there's a next comparison to evaluate
+      if (submitResult.next_comparison_id) {
+        toast({
+          title: 'Next Comparison',
+          description: 'Loading the next comparison for evaluation...'
+        })
+        // Navigate to the next comparison
+        router.push(`/evaluate/${submitResult.next_comparison_id}`)
       } else {
-        router.push('/thank-you')
+        // Check if this is a Prolific session
+        const isProlific = sessionStorage.getItem('is_prolific')
+        if (isProlific) {
+          router.push('/prolific/complete')
+        } else {
+          router.push('/thank-you')
+        }
       }
     } catch (error) {
       console.error('Error submitting evaluation:', error)
@@ -449,43 +656,58 @@ export default function EvaluatePage() {
     <div className="max-w-7xl mx-auto space-y-6 p-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Video Comparison Evaluation</CardTitle>
-          <CardDescription className="text-base">
-            <div className="mt-2 space-y-1">
-              <div className="flex items-center gap-2">
-                <Badge variant="default" className="text-sm">
-                  {comparison.scenario_metadata.name || comparison.scenario_id}
-                </Badge>
-                <span className="text-sm text-gray-500">Scenario</span>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-2xl text-slate-100">Video Comparison Evaluation</CardTitle>
+            {lastSaved && (
+              <div className="flex items-center gap-2 text-sm text-slate-300">
+                {saving ? (
+                  <>
+                    <Save className="h-4 w-4 animate-pulse text-cyan-400" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 text-green-400" />
+                    <span>Saved {lastSaved.toLocaleTimeString()}</span>
+                  </>
+                )}
               </div>
-              {comparison.scenario_metadata.description && (
-                <p className="text-sm text-gray-600 mt-2">
-                  {comparison.scenario_metadata.description}
-                </p>
-              )}
+            )}
+          </div>
+          <div className="mt-2 space-y-1 text-sm">
+            <div className="flex items-center gap-2">
+              <Badge variant="default" className="text-sm bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
+                {comparison.scenario_metadata.name || comparison.scenario_id}
+              </Badge>
+              <span className="text-sm text-slate-400">Scenario</span>
             </div>
-          </CardDescription>
+            {comparison.scenario_metadata.description && (
+              <p className="text-sm text-slate-300 mt-2">
+                {comparison.scenario_metadata.description}
+              </p>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           
           {/* Keyboard Shortcuts */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+          <div className="bg-slate-800/50 border border-slate-600/50 rounded-lg p-3 mb-4">
             <details className="cursor-pointer">
-              <summary className="text-sm font-medium text-yellow-800 flex items-center gap-2">
-                <Settings className="h-4 w-4" />
+              <summary className="text-sm font-medium text-slate-200 flex items-center gap-2">
+                <Settings className="h-4 w-4 text-cyan-400" />
                 Keyboard Shortcuts & Tips
               </summary>
-              <div className="mt-2 text-xs text-yellow-700 grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div><kbd className="bg-white px-1 rounded">Space</kbd> Play/Pause Both</div>
-                <div><kbd className="bg-white px-1 rounded">←/→</kbd> Seek ±5s</div>
-                <div><kbd className="bg-white px-1 rounded">R</kbd> Restart Videos</div>
-                <div><kbd className="bg-white px-1 rounded">S</kbd> Toggle Sync</div>
+              <div className="mt-2 text-xs text-slate-300 grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div><kbd className="bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600">Space</kbd> Play/Pause Both</div>
+                <div><kbd className="bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600">←/→</kbd> Seek ±5s</div>
+                <div><kbd className="bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600">R</kbd> Restart Videos</div>
+                <div><kbd className="bg-slate-700 text-slate-200 px-2 py-0.5 rounded border border-slate-600">S</kbd> Toggle Sync</div>
               </div>
             </details>
           </div>
 
           {/* Video Controls Header */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 mb-6">
+          <div className="bg-gradient-to-r from-slate-800/60 to-slate-700/60 border border-slate-600/50 rounded-lg p-4 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <Button
@@ -536,11 +758,11 @@ export default function EvaluatePage() {
 
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm font-medium">Speed:</Label>
+                  <Label className="text-sm font-medium text-slate-200">Speed:</Label>
                   <select
                     value={playbackSpeed}
                     onChange={(e) => handleSpeedChange(Number(e.target.value))}
-                    className="px-2 py-1 border rounded text-sm"
+                    className="px-3 py-1.5 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400"
                   >
                     <option value={0.25}>0.25x</option>
                     <option value={0.5}>0.5x</option>
@@ -553,11 +775,11 @@ export default function EvaluatePage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm font-medium">Size:</Label>
+                  <Label className="text-sm font-medium text-slate-200">Size:</Label>
                   <select
                     value={videoSize}
                     onChange={(e) => setVideoSize(e.target.value as 'small' | 'medium' | 'large')}
-                    className="px-2 py-1 border rounded text-sm"
+                    className="px-3 py-1.5 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400"
                   >
                     <option value="small">Small</option>
                     <option value="medium">Medium</option>
@@ -607,14 +829,14 @@ export default function EvaluatePage() {
               </div>
 
               {/* Model A Controls */}
-              <div className="space-y-3 bg-gray-50 rounded-lg p-4">
+              <div className="space-y-3 bg-slate-800/50 border border-slate-600/50 rounded-lg p-4">
                 {/* Progress bar */}
                 <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-gray-500">
+                  <div className="flex justify-between text-xs text-slate-300">
                     <span>Progress</span>
                     <span className="flex items-center gap-2">
                       {syncMode && (
-                        <span className="text-blue-600 font-medium">🔗 SYNC</span>
+                        <span className="text-cyan-400 font-medium">🔗 SYNC</span>
                       )}
                       <span>{Math.round((currentTimeA / durationA) * 100) || 0}%</span>
                     </span>
@@ -625,16 +847,16 @@ export default function EvaluatePage() {
                     max={durationA || 100}
                     value={currentTimeA}
                     onChange={(e) => handleSeek('A', Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer 
-                              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50
+                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer 
+                              focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-opacity-50
                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
-                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-lg"
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-lg"
                   />
                 </div>
 
                 {/* Volume control */}
                 <div className="flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 text-gray-500" />
+                  <Volume2 className="h-4 w-4 text-slate-400" />
                   <input
                     type="range"
                     min={0}
@@ -642,9 +864,11 @@ export default function EvaluatePage() {
                     step={0.1}
                     value={volumeA}
                     onChange={(e) => handleVolumeChange('A', Number(e.target.value))}
-                    className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer
+                              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
                   />
-                  <span className="text-xs text-gray-500 w-8">{Math.round(volumeA * 100)}%</span>
+                  <span className="text-xs text-slate-300 w-8">{Math.round(volumeA * 100)}%</span>
                 </div>
 
                 {/* Quick seek buttons */}
@@ -706,14 +930,14 @@ export default function EvaluatePage() {
               </div>
 
               {/* Model B Controls */}
-              <div className="space-y-3 bg-gray-50 rounded-lg p-4">
+              <div className="space-y-3 bg-slate-800/50 border border-slate-600/50 rounded-lg p-4">
                 {/* Progress bar */}
                 <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-gray-500">
+                  <div className="flex justify-between text-xs text-slate-300">
                     <span>Progress</span>
                     <span className="flex items-center gap-2">
                       {syncMode && (
-                        <span className="text-purple-600 font-medium">🔗 SYNC</span>
+                        <span className="text-green-400 font-medium">🔗 SYNC</span>
                       )}
                       <span>{Math.round((currentTimeB / durationB) * 100) || 0}%</span>
                     </span>
@@ -724,16 +948,16 @@ export default function EvaluatePage() {
                     max={durationB || 100}
                     value={currentTimeB}
                     onChange={(e) => handleSeek('B', Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer 
-                              focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50
+                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer 
+                              focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50
                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
-                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-500 [&::-webkit-slider-thumb]:shadow-lg"
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-400 [&::-webkit-slider-thumb]:shadow-lg"
                   />
                 </div>
 
                 {/* Volume control */}
                 <div className="flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 text-gray-500" />
+                  <Volume2 className="h-4 w-4 text-slate-400" />
                   <input
                     type="range"
                     min={0}
@@ -741,9 +965,11 @@ export default function EvaluatePage() {
                     step={0.1}
                     value={volumeB}
                     onChange={(e) => handleVolumeChange('B', Number(e.target.value))}
-                    className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer
+                              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-400"
                   />
-                  <span className="text-xs text-gray-500 w-8">{Math.round(volumeB * 100)}%</span>
+                  <span className="text-xs text-slate-300 w-8">{Math.round(volumeB * 100)}%</span>
                 </div>
 
                 {/* Quick seek buttons */}
@@ -781,14 +1007,14 @@ export default function EvaluatePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-slate-300 leading-relaxed">
               {dimensionInfo[dimension].description}
             </p>
             
             {dimensionInfo[dimension].sub_questions && (
-              <div className="bg-secondary p-3 rounded-lg">
-                <p className="text-sm font-medium mb-1">Consider these aspects:</p>
-                <ul className="list-disc list-inside text-sm text-muted-foreground">
+              <div className="bg-slate-800/50 border border-slate-600/50 p-4 rounded-lg">
+                <p className="text-sm font-medium mb-2 text-slate-200">Consider these aspects:</p>
+                <ul className="list-disc list-inside text-sm text-slate-300 space-y-1">
                   {dimensionInfo[dimension].sub_questions.map((q, i) => (
                     <li key={i}>{q}</li>
                   ))}
@@ -800,26 +1026,46 @@ export default function EvaluatePage() {
               value={responses[dimension] || ''}
               onValueChange={(value) => setResponses({ ...responses, [dimension]: value })}
             >
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="A_much_better" id={`${dimension}_A_much`} />
-                  <Label htmlFor={`${dimension}_A_much`}>Model A is much better</Label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                  <RadioGroupItem 
+                    value="A_much_better" 
+                    id={`${dimension}_A_much`}
+                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                  />
+                  <Label htmlFor={`${dimension}_A_much`} className="text-slate-200 font-medium cursor-pointer">Model A is much better</Label>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="A_slightly_better" id={`${dimension}_A_slight`} />
-                  <Label htmlFor={`${dimension}_A_slight`}>Model A is slightly better</Label>
+                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                  <RadioGroupItem 
+                    value="A_slightly_better" 
+                    id={`${dimension}_A_slight`}
+                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                  />
+                  <Label htmlFor={`${dimension}_A_slight`} className="text-slate-200 font-medium cursor-pointer">Model A is slightly better</Label>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="Equal" id={`${dimension}_equal`} />
-                  <Label htmlFor={`${dimension}_equal`}>Both are equally good</Label>
+                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                  <RadioGroupItem 
+                    value="Equal" 
+                    id={`${dimension}_equal`}
+                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                  />
+                  <Label htmlFor={`${dimension}_equal`} className="text-slate-200 font-medium cursor-pointer">Both are equally good</Label>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="B_slightly_better" id={`${dimension}_B_slight`} />
-                  <Label htmlFor={`${dimension}_B_slight`}>Model B is slightly better</Label>
+                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                  <RadioGroupItem 
+                    value="B_slightly_better" 
+                    id={`${dimension}_B_slight`}
+                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                  />
+                  <Label htmlFor={`${dimension}_B_slight`} className="text-slate-200 font-medium cursor-pointer">Model B is slightly better</Label>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="B_much_better" id={`${dimension}_B_much`} />
-                  <Label htmlFor={`${dimension}_B_much`}>Model B is much better</Label>
+                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                  <RadioGroupItem 
+                    value="B_much_better" 
+                    id={`${dimension}_B_much`}
+                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                  />
+                  <Label htmlFor={`${dimension}_B_much`} className="text-slate-200 font-medium cursor-pointer">Model B is much better</Label>
                 </div>
               </div>
             </RadioGroup>

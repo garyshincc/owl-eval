@@ -11,7 +11,11 @@ export async function GET() {
           select: {
             comparisons: true,
             participants: true,
-            evaluations: true,
+            evaluations: {
+              where: {
+                status: 'completed'
+              }
+            },
           }
         }
       }
@@ -32,7 +36,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { name, description, slug, comparisons } = await request.json();
+    const { name, description, slug, group, comparisons } = await request.json();
 
     if (!name || !comparisons || !Array.isArray(comparisons)) {
       return NextResponse.json(
@@ -57,6 +61,7 @@ export async function POST(request: NextRequest) {
         name,
         description: description || null,
         slug: slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+        group: group || null,
         status: 'draft',
         config: {
           models: Array.from(new Set([...comparisons.map(c => c.modelA), ...comparisons.map(c => c.modelB)])),
@@ -80,7 +85,11 @@ export async function POST(request: NextRequest) {
           select: {
             comparisons: true,
             participants: true,
-            evaluations: true,
+            evaluations: {
+              where: {
+                status: 'completed'
+              }
+            },
           }
         }
       }

@@ -32,8 +32,11 @@ import {
   Play,
   Pause,
   Archive,
+  ArchiveRestore,
   Edit,
-  Trash2
+  Trash2,
+  UserPlus,
+  DollarSign
 } from 'lucide-react'
 
 interface Experiment {
@@ -42,6 +45,9 @@ interface Experiment {
   name: string
   description: string | null
   status: string
+  archived: boolean
+  archivedAt: string | null
+  group: string | null
   prolificStudyId: string | null
   config: any
   createdAt: string
@@ -60,16 +66,19 @@ interface ExperimentTableProps {
   loading?: boolean
   onCreateNew: () => void
   onRefresh?: () => void
+  onCreateProlificStudy?: (experimentId: string) => void
 }
 
 export function ExperimentTable({ 
   experiments, 
   loading, 
   onCreateNew,
-  onRefresh 
+  onRefresh,
+  onCreateProlificStudy 
 }: ExperimentTableProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [groupFilter, setGroupFilter] = useState<string>('all')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const filteredExperiments = experiments.filter(exp => {
@@ -79,17 +88,21 @@ export function ExperimentTable({
       exp.description?.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesStatus = statusFilter === 'all' || exp.status === statusFilter
+    const matchesGroup = groupFilter === 'all' || exp.group === groupFilter || (!exp.group && groupFilter === 'ungrouped')
     
-    return matchesSearch && matchesStatus
+    return matchesSearch && matchesStatus && matchesGroup
   })
 
-  const getStatusColor = (status: string) => {
+  const uniqueGroups = Array.from(new Set(experiments.map(exp => exp.group).filter(Boolean)))
+
+  const getStatusColor = (status: string, archived: boolean) => {
+    if (archived) return 'bg-destructive/10 text-destructive border-destructive/20'
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800 border-green-200'
-      case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'paused': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'draft': return 'bg-gray-100 text-gray-800 border-gray-200'
-      default: return 'bg-red-100 text-red-800 border-red-200'
+      case 'active': return 'bg-secondary/10 text-secondary border-secondary/20'
+      case 'completed': return 'bg-primary/10 text-primary border-primary/20'
+      case 'paused': return 'bg-accent/10 text-accent border-accent/20'
+      case 'draft': return 'bg-muted text-muted-foreground border-border'
+      default: return 'bg-destructive/10 text-destructive border-destructive/20'
     }
   }
 
@@ -188,7 +201,7 @@ export function ExperimentTable({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: 'archived' }),
+        body: JSON.stringify({ archived: true }),
       })
 
       if (!response.ok) {
@@ -216,17 +229,53 @@ export function ExperimentTable({
     }
   }
 
+  const handleUnarchiveExperiment = async (experimentId: string) => {
+    setActionLoading(experimentId)
+    try {
+      const response = await fetch(`/api/experiments/${experimentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ archived: false }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to unarchive experiment')
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Experiment unarchived successfully',
+      })
+
+      // Refresh the experiments list
+      if (onRefresh) {
+        onRefresh()
+      }
+    } catch (error) {
+      console.error('Error unarchiving experiment:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to unarchive experiment',
+        variant: 'destructive'
+      })
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   if (loading) {
     return (
       <Card>
         <CardHeader>
-          <div className="h-6 bg-gray-200 rounded w-1/4 animate-pulse"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+          <div className="h-6 bg-muted rounded w-1/4 animate-pulse"></div>
+          <div className="h-4 bg-muted rounded w-1/2 animate-pulse"></div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-16 bg-gray-100 rounded animate-pulse"></div>
+              <div key={i} className="h-16 bg-muted/50 rounded animate-pulse"></div>
             ))}
           </div>
         </CardContent>
@@ -267,7 +316,7 @@ export function ExperimentTable({
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder="Search experiments..."
               value={searchTerm}
@@ -275,6 +324,26 @@ export function ExperimentTable({
               className="pl-10"
             />
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="sm:w-auto w-full">
+                Group: {groupFilter === 'all' ? 'All' : groupFilter === 'ungrouped' ? 'Ungrouped' : groupFilter}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setGroupFilter('all')}>
+                All Groups
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setGroupFilter('ungrouped')}>
+                Ungrouped
+              </DropdownMenuItem>
+              {uniqueGroups.map((group) => (
+                <DropdownMenuItem key={group} onClick={() => setGroupFilter(group!)}>
+                  {group}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="sm:w-auto w-full">
@@ -297,6 +366,9 @@ export function ExperimentTable({
               <DropdownMenuItem onClick={() => setStatusFilter('paused')}>
                 Paused
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('archived')}>
+                Archived
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -308,6 +380,7 @@ export function ExperimentTable({
               <TableHeader>
                 <TableRow>
                   <TableHead>Experiment</TableHead>
+                  <TableHead>Group</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead>Participants</TableHead>
@@ -317,31 +390,48 @@ export function ExperimentTable({
               </TableHeader>
               <TableBody>
                 {filteredExperiments.map((exp) => (
-                  <TableRow key={exp.id} className="hover:bg-gray-50">
+                  <TableRow key={exp.id} className="hover:bg-muted/50">
                     <TableCell>
                       <div className="space-y-1">
                         <div className="font-medium">{exp.name}</div>
-                        <div className="text-sm text-gray-500">
-                          <code className="bg-gray-100 px-1 rounded text-xs">
+                        <div className="text-sm text-muted-foreground">
+                          <code className="bg-muted px-1 rounded text-xs">
                             {exp.slug}
                           </code>
                         </div>
                         {exp.description && (
-                          <div className="text-xs text-gray-400 max-w-md truncate">
+                          <div className="text-xs text-muted-foreground max-w-md truncate">
                             {exp.description}
                           </div>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={getStatusColor(exp.status)}>
-                        {exp.status}
-                      </Badge>
-                      {exp.prolificStudyId && (
-                        <div className="text-xs text-blue-600 mt-1">
-                          Prolific: {exp.prolificStudyId}
-                        </div>
+                      {exp.group ? (
+                        <Badge variant="outline" className="text-xs">
+                          {exp.group}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <Badge className={getStatusColor(exp.status, exp.archived)}>
+                          {exp.archived ? 'archived' : exp.status}
+                        </Badge>
+                        {exp.prolificStudyId && (
+                          <a
+                            href={`https://app.prolific.co/researcher/studies/${exp.prolificStudyId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mt-1"
+                          >
+                            <UserPlus className="h-3 w-3" />
+                            Prolific Study
+                          </a>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="space-y-2 min-w-[120px]">
@@ -391,6 +481,15 @@ export function ExperimentTable({
                             <Edit className="h-4 w-4 mr-2" />
                             Edit Details
                           </DropdownMenuItem>
+                          {!exp.prolificStudyId && !exp.archived && (
+                            <DropdownMenuItem
+                              onClick={() => onCreateProlificStudy?.(exp.id)}
+                              disabled={!onCreateProlificStudy}
+                            >
+                              <DollarSign className="h-4 w-4 mr-2" />
+                              Launch on Prolific
+                            </DropdownMenuItem>
+                          )}
                           {exp.status === 'active' ? (
                             <DropdownMenuItem
                               onClick={() => handleUpdateStatus(exp.id, 'paused')}
@@ -408,13 +507,23 @@ export function ExperimentTable({
                               Start Experiment
                             </DropdownMenuItem>
                           ) : null}
-                          <DropdownMenuItem
-                            onClick={() => handleArchiveExperiment(exp.id)}
-                            disabled={actionLoading === exp.id}
-                          >
-                            <Archive className="h-4 w-4 mr-2" />
-                            Archive
-                          </DropdownMenuItem>
+                          {exp.archived ? (
+                            <DropdownMenuItem
+                              onClick={() => handleUnarchiveExperiment(exp.id)}
+                              disabled={actionLoading === exp.id}
+                            >
+                              <ArchiveRestore className="h-4 w-4 mr-2" />
+                              Unarchive
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              onClick={() => handleArchiveExperiment(exp.id)}
+                              disabled={actionLoading === exp.id}
+                            >
+                              <Archive className="h-4 w-4 mr-2" />
+                              Archive
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem 
                             className="text-red-600"
                             onClick={() => handleDeleteExperiment(exp.id, exp.name)}
@@ -433,11 +542,11 @@ export function ExperimentTable({
           </div>
         ) : (
           <div className="text-center py-12 border border-dashed rounded-lg">
-            <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">
               {searchTerm || statusFilter !== 'all' ? 'No matching experiments' : 'No experiments yet'}
             </h3>
-            <p className="text-gray-500 mb-4">
+            <p className="text-muted-foreground mb-4">
               {searchTerm || statusFilter !== 'all' 
                 ? 'Try adjusting your search or filters'
                 : 'Create your first experiment to get started with evaluations'

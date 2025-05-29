@@ -14,6 +14,7 @@ import { CLIToolsPanel } from '@/components/admin/cli-tools-panel'
 import { CreateExperimentWizard } from '@/components/admin/create-experiment-wizard'
 import { ModelPerformanceChart } from '@/components/admin/model-performance-chart'
 import { ProgressTracker } from '@/components/admin/progress-tracker'
+import { ProlificDialog } from '@/components/admin/prolific-dialog'
 import { Breadcrumbs } from '@/components/navigation'
 
 interface EvaluationStats {
@@ -36,12 +37,16 @@ interface Experiment {
   name: string
   description: string | null
   status: string
+  archived: boolean
+  archivedAt: string | null
+  group: string | null
   prolificStudyId: string | null
   config: any
   createdAt: string
   updatedAt: string
   startedAt: string | null
   completedAt: string | null
+  comparisons?: Array<any>
   _count: {
     comparisons: number
     participants: number
@@ -70,6 +75,7 @@ interface UploadedVideo {
 export default function AdminPage() {
   // Data state
   const [stats, setStats] = useState<EvaluationStats | null>(null)
+  const [evaluationStatus, setEvaluationStatus] = useState<any>(null)
   const [performance, setPerformance] = useState<ModelPerformance[]>([])
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const [comparisonProgress, setComparisonProgress] = useState<ComparisonProgress[]>([])
@@ -82,6 +88,9 @@ export default function AdminPage() {
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set())
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const [prolificDialogOpen, setProlificDialogOpen] = useState(false)
+  const [selectedExperimentForProlific, setSelectedExperimentForProlific] = useState<Experiment | null>(null)
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
 
   // Check if Stack Auth is configured (client-side check)
   const isStackAuthConfigured = typeof window !== 'undefined' && 
@@ -90,30 +99,37 @@ export default function AdminPage() {
 
   useEffect(() => {
     fetchAllData()
+  }, [selectedGroup])
+  
+  useEffect(() => {
     const dataInterval = setInterval(fetchAllData, 30000) // Refresh every 30 seconds
     
     return () => {
       clearInterval(dataInterval)
     }
-  }, [])
+  }, [selectedGroup])
 
   const fetchAllData = async () => {
     try {
-      const [statsRes, perfRes, expRes, progressRes] = await Promise.all([
-        fetch('/api/evaluation-stats'),
-        fetch('/api/model-performance'),
+      const groupParam = selectedGroup ? `?group=${encodeURIComponent(selectedGroup)}` : ''
+      const [statsRes, evalStatusRes, perfRes, expRes, progressRes] = await Promise.all([
+        fetch(`/api/evaluation-stats${groupParam}`),
+        fetch('/api/evaluation-status'),
+        fetch(`/api/model-performance${groupParam}`),
         fetch('/api/experiments'),
         fetch('/api/comparison-progress')
       ])
       
-      const [statsData, perfData, expData, progressData] = await Promise.all([
+      const [statsData, evalStatusData, perfData, expData, progressData] = await Promise.all([
         statsRes.json(),
+        evalStatusRes.json(),
         perfRes.json(),
         expRes.json(),
         progressRes.json()
       ])
       
       setStats(statsData)
+      setEvaluationStatus(evalStatusData)
       setPerformance(perfData || [])
       setExperiments(expData || [])
       setComparisonProgress(progressData || [])
@@ -308,18 +324,26 @@ export default function AdminPage() {
     setTimeout(() => setCopiedCommand(null), 2000)
   }
 
+  const handleCreateProlificStudy = (experimentId: string) => {
+    const experiment = experiments.find(exp => exp.id === experimentId)
+    if (experiment) {
+      setSelectedExperimentForProlific(experiment)
+      setProlificDialogOpen(true)
+    }
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="animate-pulse space-y-8">
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+            <div className="h-8 bg-muted rounded w-1/3"></div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-32 bg-gray-200 rounded"></div>
+                <div key={i} className="h-32 bg-muted rounded"></div>
               ))}
             </div>
-            <div className="h-96 bg-gray-200 rounded"></div>
+            <div className="h-96 bg-muted rounded"></div>
           </div>
         </div>
       </div>
@@ -327,7 +351,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumbs */}
         <Breadcrumbs 
@@ -341,8 +365,8 @@ export default function AdminPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
               Manage experiments, monitor progress, and analyze model performance
             </p>
           </div>
@@ -385,7 +409,10 @@ export default function AdminPage() {
             <StatsDashboard 
               stats={stats} 
               experiments={experiments}
+              evaluationStatus={evaluationStatus}
               loading={refreshing}
+              selectedGroup={selectedGroup}
+              onGroupChange={setSelectedGroup}
             />
             <ProgressTracker 
               stats={stats}
@@ -400,6 +427,7 @@ export default function AdminPage() {
               loading={refreshing}
               onCreateNew={() => setShowCreateWizard(true)}
               onRefresh={handleRefresh}
+              onCreateProlificStudy={handleCreateProlificStudy}
             />
           </TabsContent>
           
@@ -422,6 +450,9 @@ export default function AdminPage() {
             <ModelPerformanceChart 
               performance={performance}
               loading={refreshing}
+              selectedGroup={selectedGroup}
+              onGroupChange={setSelectedGroup}
+              experiments={experiments}
             />
           </TabsContent>
           
@@ -439,6 +470,14 @@ export default function AdminPage() {
           onOpenChange={setShowCreateWizard}
           uploadedVideos={uploadedVideos}
           onRefresh={fetchAllData}
+        />
+
+        {/* Prolific Dialog */}
+        <ProlificDialog
+          open={prolificDialogOpen}
+          onOpenChange={setProlificDialogOpen}
+          experiment={selectedExperimentForProlific}
+          onSuccess={fetchAllData}
         />
       </div>
     </div>

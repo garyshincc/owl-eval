@@ -36,18 +36,18 @@ export function Navigation({ className }: NavigationProps) {
   ]
 
   return (
-    <nav className={`border-b bg-white ${className}`}>
+    <nav className={`border-b bg-card border-border ${className}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <BarChart3 className="h-4 w-4 text-white" />
+            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity glow">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
+                <BarChart3 className="h-4 w-4 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Owl Eval</h1>
-                <p className="text-xs text-gray-500 leading-none">Human Evaluation Platform</p>
+                <h1 className="text-lg font-bold text-foreground">Owl Eval</h1>
+                <p className="text-xs text-muted-foreground leading-none">Human Evaluation Platform</p>
               </div>
             </Link>
           </div>
@@ -63,8 +63,8 @@ export function Navigation({ className }: NavigationProps) {
                   href={item.href}
                   className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive 
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      ? 'bg-primary/10 text-primary border border-primary/20 glow-text' 
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
                 >
                   {item.icon}
@@ -97,19 +97,19 @@ interface BreadcrumbsProps {
 
 export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
   return (
-    <nav className={`flex items-center space-x-1 text-sm text-gray-500 ${className}`}>
+    <nav className={`flex items-center space-x-1 text-sm text-muted-foreground ${className}`}>
       {items.map((item, index) => (
         <div key={index} className="flex items-center">
           {index > 0 && <ChevronRight className="h-3 w-3 mx-1" />}
           {item.href ? (
             <Link 
               href={item.href} 
-              className="hover:text-gray-700 transition-colors"
+              className="hover:text-foreground transition-colors"
             >
               {item.label}
             </Link>
           ) : (
-            <span className="text-gray-900 font-medium">{item.label}</span>
+            <span className="text-foreground font-medium">{item.label}</span>
           )}
         </div>
       ))}
