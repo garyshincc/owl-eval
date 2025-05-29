@@ -65,8 +65,7 @@ jobs:
           NODE_ENV: production
           NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
           NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
-          NEXT_PUBLIC_SANITY_DATASET: ${{ secrets.NEXT_PUBLIC_SANITY_DATASET }}
-          NEXT_PUBLIC_SANITY_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_SANITY_PROJECT_ID }}
+          STACK_SECRET_SERVER_KEY: ${{ secrets.STACK_SECRET_SERVER_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BASE_URL: ${{ secrets.BASE_URL }}
       
@@ -76,8 +75,7 @@ jobs:
           docker build \
             --build-arg NEXT_PUBLIC_STACK_PROJECT_ID="${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}" \
             --build-arg NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}" \
-            --build-arg NEXT_PUBLIC_SANITY_DATASET="${{ secrets.NEXT_PUBLIC_SANITY_DATASET }}" \
-            --build-arg NEXT_PUBLIC_SANITY_PROJECT_ID="${{ secrets.NEXT_PUBLIC_SANITY_PROJECT_ID }}" \
+            --build-arg STACK_SECRET_SERVER_KEY="${{ secrets.STACK_SECRET_SERVER_KEY }}" \
             --build-arg DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             --build-arg BASE_URL="${{ secrets.BASE_URL }}" \
             --tag "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}" \
