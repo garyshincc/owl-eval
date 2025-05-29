@@ -42,7 +42,7 @@ By participating in this project, you agree to abide by our Code of Conduct:
    pip install -e .
    
    # Frontend dependencies
-   cd matrix-game-eval/frontend
+   cd eval/frontend
    npm install
    ```
 
@@ -228,7 +228,7 @@ Write tests for:
 ### Frontend Tests
 
 ```bash
-cd matrix-game-eval/frontend
+cd eval/frontend
 
 # Run tests
 npm test

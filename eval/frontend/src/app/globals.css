@@ -1,0 +1,251 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Using only dark mode variables - OpenWorld Labs design system */
+  :root {
+    --background: 220 20% 6%;
+    --foreground: 210 20% 95%;
+    --card: 220 20% 10%;
+    --card-foreground: 210 20% 95%;
+    --popover: 220 20% 6%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 186 90% 70%; /* Brighter cyan for better visibility */
+    --primary-foreground: 220 20% 8%;
+    --secondary: 157 74% 75%; /* Brighter green for better visibility */
+    --secondary-foreground: 220 20% 8%;
+    --muted: 220 20% 18%;
+    --muted-foreground: 210 20% 80%;
+    --accent: 186 90% 55%;
+    --accent-foreground: 210 20% 95%;
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 210 20% 95%;
+    --border: 220 20% 25%;
+    --input: 220 20% 18%;
+    --ring: 186 90% 70%;
+    --radius: 0.5rem;
+    --chart-1: 186 90% 70%; /* Cyan */
+    --chart-2: 157 74% 75%; /* Green */
+    --chart-3: 197 77% 55%; /* Blue */
+    --chart-4: 171 58% 65%; /* Teal */
+    --chart-5: 199 89% 75%; /* Light Blue */
+  }
+
+  /* Ensure dark theme is always applied */
+  .dark {
+    --background: 220 20% 4%;
+    --foreground: 210 20% 98%;
+    --card: 220 20% 8%;
+    --card-foreground: 210 20% 98%;
+    --popover: 220 20% 4%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 186 90% 61%;
+    --primary-foreground: 220 20% 4%;
+    --secondary: 157 74% 67%;
+    --secondary-foreground: 220 20% 4%;
+    --muted: 220 20% 12%;
+    --muted-foreground: 186 30% 70%;
+    --accent: 186 90% 40%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 20% 16%;
+    --input: 220 20% 16%;
+    --ring: 186 90% 61%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image: 
+      radial-gradient(circle at 20% 30%, rgba(77, 206, 129, 0.03) 0%, transparent 25%),
+      radial-gradient(circle at 80% 50%, rgba(77, 206, 129, 0.02) 0%, transparent 20%);
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -1;
+    background: 
+      linear-gradient(90deg, transparent 0%, rgba(77, 206, 129, 0.01) 25%, transparent 50%, rgba(77, 206, 129, 0.01) 75%, transparent 100%);
+    opacity: 0.5;
+    animation: aurora 15s linear infinite;
+  }
+
+  @keyframes aurora {
+    from { background-position: 0% 0%; }
+    to { background-position: 100% 0%; }
+  }
+
+  /* Stylized glow effect for highlighted elements */
+  .glow {
+    position: relative;
+  }
+  
+  .glow::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: -1;
+    filter: blur(15px);
+    background: rgba(77, 206, 129, 0.3);
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  .glow:hover::after {
+    opacity: 1;
+  }
+
+  /* Text glow effect for active navigation items */
+  .glow-text {
+    text-shadow: 0 0 8px rgba(77, 206, 129, 0.6);
+    position: relative;
+  }
+  
+  /* Typography Scale */
+  h1 {
+    @apply text-3xl font-bold tracking-tight;
+    line-height: 1.2;
+  }
+  
+  h2 {
+    @apply text-2xl font-semibold tracking-tight;
+    line-height: 1.3;
+  }
+  
+  h3 {
+    @apply text-xl font-semibold;
+    line-height: 1.4;
+  }
+  
+  h4 {
+    @apply text-lg font-medium;
+    line-height: 1.4;
+  }
+  
+  h5 {
+    @apply text-base font-medium;
+    line-height: 1.5;
+  }
+  
+  h6 {
+    @apply text-sm font-medium;
+    line-height: 1.5;
+  }
+  
+  p {
+    @apply leading-7;
+  }
+  
+  /* Focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2;
+  }
+  
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* Loading animations */
+  @keyframes shimmer {
+    0% {
+      background-position: -200px 0;
+    }
+    100% {
+      background-position: calc(200px + 100%) 0;
+    }
+  }
+  
+  .animate-shimmer {
+    animation: shimmer 2s infinite linear;
+    background: linear-gradient(90deg, #f0f0f0 0px, #e0e0e0 40px, #f0f0f0 80px);
+    background-size: 200px;
+  }
+}
+
+@layer components {
+  /* Custom component styles */
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+  }
+  
+  .glass-effect {
+    backdrop-filter: blur(12px);
+    background-color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .gradient-border {
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+    background-size: 200% 200%;
+    animation: gradient 4s ease infinite;
+  }
+  
+  @keyframes gradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+}
+
+.loader {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  position: fixed;
+  background: transparent;
+  overflow: hidden;
+  z-index: 9999;
+}
+.loader::after {
+  content: '';
+  width: 40%;
+  height: 3px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  animation: animloader 1s linear infinite;
+  @apply bg-primary;
+}
+
+@media (min-width: 800px) {
+  .loader::after {
+    width: 20%;
+    animation: animloader 2s linear infinite;
+  }
+}
+
+@keyframes animloader {
+  0% {
+    left: 0;
+    transform: translateX(-100%);
+  }
+  100% {
+    left: 100%;
+    transform: translateX(0%);
+  }
+}

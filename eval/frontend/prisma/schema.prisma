@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // For SQLite in development, change provider to "sqlite"
+}
+
+model Experiment {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  description     String?
+  status          String   @default("draft") // draft, active, completed, archived
+  archived        Boolean  @default(false)
+  group           String?  // Optional experiment group for organization
+  prolificStudyId String?  @unique
+  config          Json     // Stores experiment configuration (models, scenarios, parameters)
+  createdBy       String?  // Stack Auth user ID
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  startedAt       DateTime?
+  completedAt     DateTime?
+  archivedAt      DateTime?
+  
+  comparisons     Comparison[]
+  participants    Participant[]
+  evaluations     Evaluation[]
+  
+  @@index([slug])
+}
+
+model Comparison {
+  id           String   @id @default(cuid())
+  experimentId String
+  scenarioId   String
+  modelA       String
+  modelB       String
+  videoAPath   String
+  videoBPath   String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  
+  experiment   Experiment @relation(fields: [experimentId], references: [id])
+  evaluations  Evaluation[]
+  
+  @@index([experimentId])
+}
+
+model Participant {
+  id                 String   @id @default(cuid())
+  prolificId         String   @unique
+  experimentId       String
+  sessionId          String   @unique @default(cuid())
+  status             String   @default("active") // active, completed, rejected
+  completionCode     String?
+  assignedComparisons Json    // Array of comparison IDs
+  startedAt          DateTime @default(now())
+  completedAt        DateTime?
+  metadata           Json?    // Additional Prolific data
+  
+  experiment         Experiment @relation(fields: [experimentId], references: [id])
+  evaluations        Evaluation[]
+  
+  @@index([prolificId])
+  @@index([experimentId])
+}
+
+model Evaluation {
+  id                    String   @id @default(cuid())
+  comparisonId          String
+  participantId         String
+  experimentId          String
+  chosenModel           String?  // A or B (nullable for drafts)
+  dimensionScores       Json     // Stores all dimension scores
+  completionTimeSeconds Float?
+  clientMetadata        Json?    // Browser info, etc.
+  status                String   @default("draft") // draft, completed
+  lastSavedAt           DateTime @updatedAt
+  createdAt             DateTime @default(now())
+  
+  comparison            Comparison  @relation(fields: [comparisonId], references: [id])
+  participant           Participant @relation(fields: [participantId], references: [id])
+  experiment            Experiment  @relation(fields: [experimentId], references: [id])
+  
+  @@unique([comparisonId, participantId]) // Prevent duplicate evaluations
+  @@index([comparisonId])
+  @@index([participantId])
+  @@index([experimentId])
+  @@index([status])
+}
