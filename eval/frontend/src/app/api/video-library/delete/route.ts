@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth-middleware'
+import { prisma } from '@/lib/prisma'
 import { S3Client, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 
 // Configure S3 client for Tigris
@@ -30,17 +31,34 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Validate that all keys are in the video-library prefix for security
-    const validKeys = keys.filter(key => key.startsWith('video-library/'))
-    
-    if (validKeys.length !== keys.length) {
+    // Get video records from database to get their keys
+    const videos = await prisma.video.findMany({
+      where: {
+        key: {
+          in: keys
+        }
+      }
+    })
+
+    if (videos.length === 0) {
       return NextResponse.json(
-        { error: 'Some keys are not valid video library keys' },
+        { error: 'No matching videos found' },
+        { status: 404 }
+      )
+    }
+
+    // Validate that all keys are in the video-library prefix for security
+    const validKeys = videos.map(v => v.key).filter(key => key.startsWith('video-library/'))
+    
+    if (validKeys.length === 0) {
+      return NextResponse.json(
+        { error: 'No valid video library keys found' },
         { status: 400 }
       )
     }
 
-    const command = new DeleteObjectsCommand({
+    // Delete from S3 first
+    const s3Command = new DeleteObjectsCommand({
       Bucket: process.env.TIGRIS_BUCKET_NAME,
       Delete: {
         Objects: validKeys.map(key => ({ Key: key })),
@@ -48,12 +66,22 @@ export async function DELETE(request: NextRequest) {
       }
     })
 
-    const response = await s3Client.send(command)
+    const s3Response = await s3Client.send(s3Command)
+
+    // Delete from database
+    const dbResult = await prisma.video.deleteMany({
+      where: {
+        key: {
+          in: validKeys
+        }
+      }
+    })
 
     return NextResponse.json({ 
       success: true,
-      deleted: response.Deleted?.length || 0,
-      errors: response.Errors || []
+      deleted: dbResult.count,
+      s3Deleted: s3Response.Deleted?.length || 0,
+      s3Errors: s3Response.Errors || []
     })
   } catch (error) {
     console.error('Error deleting videos:', error)

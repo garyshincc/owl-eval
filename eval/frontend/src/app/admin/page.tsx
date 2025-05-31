@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/use-toast'
@@ -12,6 +12,7 @@ import { ExperimentTable } from '@/components/admin/experiment-table'
 import { VideoLibraryManager } from '@/components/admin/video-library-manager'
 import { CLIToolsPanel } from '@/components/admin/cli-tools-panel'
 import { CreateExperimentWizard } from '@/components/admin/create-experiment-wizard'
+import { BulkExperimentWizard } from '@/components/admin/bulk-experiment-wizard'
 import { ModelPerformanceChart } from '@/components/admin/model-performance-chart'
 import { ProgressTracker } from '@/components/admin/progress-tracker'
 import { ProlificDialog } from '@/components/admin/prolific-dialog'
@@ -65,11 +66,18 @@ interface ComparisonProgress {
 }
 
 interface UploadedVideo {
-  url: string
-  name: string
-  uploadedAt: Date
+  id: string
   key: string
+  name: string
+  url: string
   size: number
+  duration?: number
+  tags: string[]
+  groups: string[]
+  modelName?: string
+  scenarioId?: string
+  uploadedAt: Date
+  metadata?: any
 }
 
 export default function AdminPage() {
@@ -85,6 +93,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [showCreateWizard, setShowCreateWizard] = useState(false)
+  const [showBulkWizard, setShowBulkWizard] = useState(false)
   const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set())
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
@@ -97,19 +106,7 @@ export default function AdminPage() {
     process.env.NEXT_PUBLIC_STACK_PROJECT_ID && 
     process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
 
-  useEffect(() => {
-    fetchAllData()
-  }, [selectedGroup])
-  
-  useEffect(() => {
-    const dataInterval = setInterval(fetchAllData, 30000) // Refresh every 30 seconds
-    
-    return () => {
-      clearInterval(dataInterval)
-    }
-  }, [selectedGroup])
-
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     try {
       const groupParam = selectedGroup ? `?group=${encodeURIComponent(selectedGroup)}` : ''
       const [statsRes, evalStatusRes, perfRes, expRes, progressRes] = await Promise.all([
@@ -144,16 +141,30 @@ export default function AdminPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [selectedGroup])
+
+  useEffect(() => {
+    fetchAllData()
+  }, [selectedGroup, fetchAllData])
+  
+  useEffect(() => {
+    const dataInterval = setInterval(fetchAllData, 30000) // Refresh every 30 seconds
+    
+    return () => {
+      clearInterval(dataInterval)
+    }
+  }, [selectedGroup, fetchAllData])
 
   const fetchVideoLibrary = async () => {
     try {
-      const response = await fetch('/api/video-library')
+      const response = await fetch('/api/videos')
       if (response.ok) {
         const videos = await response.json()
         const videosWithDates = videos.map((video: any) => ({
           ...video,
-          uploadedAt: new Date(video.uploadedAt)
+          uploadedAt: new Date(video.uploadedAt),
+          tags: video.tags || [],
+          groups: video.groups || []
         }))
         setUploadedVideos(videosWithDates)
       }
@@ -202,11 +213,14 @@ export default function AdminPage() {
         const data = await response.json()
         
         setUploadedVideos(prev => [...prev, {
+          id: data.id || data.key,
           url: data.videoUrl,
           name: file.name,
           uploadedAt: new Date(),
           key: data.key,
-          size: file.size
+          size: file.size,
+          tags: [],
+          groups: []
         }])
 
         toast({
@@ -332,6 +346,42 @@ export default function AdminPage() {
     }
   }
 
+  const handleUpdateVideo = async (videoId: string, updates: Partial<UploadedVideo>) => {
+    try {
+      const response = await fetch(`/api/videos/${videoId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates)
+      })
+
+      if (!response.ok) {
+        throw new Error('Update failed')
+      }
+
+      const updatedVideo = await response.json()
+      
+      setUploadedVideos(prev => prev.map(video => 
+        video.id === videoId 
+          ? { ...video, ...updatedVideo, uploadedAt: new Date(updatedVideo.uploadedAt) }
+          : video
+      ))
+
+      toast({
+        title: 'Video updated',
+        description: 'Video metadata has been updated successfully',
+      })
+    } catch (error) {
+      console.error('Update video error:', error)
+      toast({
+        title: 'Update failed',
+        description: 'Failed to update video metadata',
+        variant: 'destructive'
+      })
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -422,13 +472,30 @@ export default function AdminPage() {
           </TabsContent>
           
           <TabsContent value="experiments">
-            <ExperimentTable 
-              experiments={experiments}
-              loading={refreshing}
-              onCreateNew={() => setShowCreateWizard(true)}
-              onRefresh={handleRefresh}
-              onCreateProlificStudy={handleCreateProlificStudy}
-            />
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setShowCreateWizard(true)}
+                  variant="default"
+                >
+                  Create Experiment (Manual)
+                </Button>
+                <Button 
+                  onClick={() => setShowBulkWizard(true)}
+                  variant="default"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                >
+                  Create Bulk Experiment
+                </Button>
+              </div>
+              <ExperimentTable 
+                experiments={experiments}
+                loading={refreshing}
+                onCreateNew={() => setShowCreateWizard(true)}
+                onRefresh={handleRefresh}
+                onCreateProlificStudy={handleCreateProlificStudy}
+              />
+            </div>
           </TabsContent>
           
           <TabsContent value="videos">
@@ -442,6 +509,7 @@ export default function AdminPage() {
               onCopyUrls={handleCopySelectedUrls}
               onDeleteSelected={handleDeleteSelectedVideos}
               onRefresh={fetchVideoLibrary}
+              onUpdateVideo={handleUpdateVideo}
               loading={refreshing}
             />
           </TabsContent>
@@ -468,6 +536,20 @@ export default function AdminPage() {
         <CreateExperimentWizard
           open={showCreateWizard}
           onOpenChange={setShowCreateWizard}
+          uploadedVideos={uploadedVideos.map(v => ({
+            url: v.url,
+            name: v.name,
+            uploadedAt: v.uploadedAt,
+            key: v.key,
+            size: v.size
+          }))}
+          onRefresh={fetchAllData}
+        />
+        
+        {/* Bulk Experiment Wizard */}
+        <BulkExperimentWizard
+          open={showBulkWizard}
+          onOpenChange={setShowBulkWizard}
           uploadedVideos={uploadedVideos}
           onRefresh={fetchAllData}
         />

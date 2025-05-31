@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { uploadVideoToTigris } from '@/lib/storage'
 import { requireAdmin } from '@/lib/auth-middleware'
 import { nanoid } from 'nanoid'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   // Check admin authentication
@@ -40,8 +41,26 @@ export async function POST(request: NextRequest) {
     // Upload to Tigris
     const videoUrl = await uploadVideoToTigris(buffer, key, file.type)
 
+    // Save video record to database
+    const video = await prisma.video.create({
+      data: {
+        key,
+        name: file.name,
+        url: videoUrl,
+        size: file.size,
+        tags: [],
+        groups: [],
+        metadata: {
+          originalName: file.name,
+          mimeType: file.type,
+          uploadedBy: authResult.user?.id || 'dev-mode'
+        }
+      }
+    })
+
     return NextResponse.json({ 
       success: true, 
+      id: video.id,
       videoUrl,
       key,
       name: file.name,

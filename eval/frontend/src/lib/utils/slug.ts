@@ -46,3 +46,30 @@ export function slugify(text: string): string {
     .replace(/[\s_-]+/g, '-') // Replace spaces, underscores with hyphens
     .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
 }
+
+/**
+ * Generate a unique slug by checking against existing records
+ */
+export async function generateUniqueSlug(baseSlug: string, tableName: string): Promise<string> {
+  // For now, just return the base slug with a random suffix if needed
+  // In a real implementation, you'd check the database for uniqueness
+  const { prisma } = await import('@/lib/prisma')
+  
+  let slug = slugify(baseSlug)
+  let counter = 1
+  
+  while (true) {
+    const testSlug = counter === 1 ? slug : `${slug}-${counter}`
+    
+    // Check if slug exists in the specified table
+    const exists = await (prisma as any)[tableName].findUnique({
+      where: { slug: testSlug }
+    })
+    
+    if (!exists) {
+      return testSlug
+    }
+    
+    counter++
+  }
+}

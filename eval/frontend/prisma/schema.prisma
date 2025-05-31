@@ -94,3 +94,24 @@ model Evaluation {
   @@index([experimentId])
   @@index([status])
 }
+
+model Video {
+  id          String   @id @default(cuid())
+  key         String   @unique  // S3/storage key
+  name        String
+  url         String
+  size        Int
+  duration    Float?   // Video duration in seconds
+  metadata    Json?    // Additional video metadata (resolution, codec, etc.)
+  tags        String[] // Array of tags for categorization
+  groups      String[] // Array of group names
+  modelName   String?  // Auto-detected or manually assigned model name
+  scenarioId  String?  // Associated scenario if applicable
+  uploadedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tags])
+  @@index([groups])
+  @@index([modelName])
+  @@index([scenarioId])
+}
