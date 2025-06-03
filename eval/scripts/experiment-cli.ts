@@ -4,7 +4,6 @@ import { Command } from 'commander';
 import { generateSlug, isValidSlug, slugify } from '../frontend/src/lib/utils/slug';
 import * as readline from 'readline';
 import { promisify } from 'util';
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import chalk from 'chalk';
 import * as dotenv from 'dotenv';
@@ -50,7 +49,7 @@ program
       console.log(chalk.blue.bold('\n🧪 Creating a new experiment\n'));
 
       try {
-      const { rl, question } = getReadline();
+      const { question } = getReadline();
       
       // Interactive prompts
       const name = options.name || await question(chalk.cyan('Experiment name: '));
@@ -123,16 +122,13 @@ program
         chalk.blue.underline(`https://yourdomain.com/evaluate/${experiment.slug}`));
       
       console.log(chalk.gray('\nNext steps:'));
-      console.log(chalk.gray('1. Generate videos using: python scripts/cli.py generate-videos'));
-      console.log(chalk.gray('2. Import comparisons using: experiment-cli import-comparisons'));
+      console.log(chalk.gray('1. Upload videos using: experiment-cli upload-videos --dir <directory>'));
+      console.log(chalk.gray('2. Assign videos using: experiment-cli assign-videos --experiment <slug>'));
       console.log(chalk.gray('3. Launch experiment using: experiment-cli launch'));
       
       } catch (error) {
         console.error(chalk.red('Error creating experiment:'), error);
       } finally {
-        if (rl) {
-          rl.close();
-        }
         await prisma.$disconnect();
       }
     }, true); // Require admin permissions
@@ -312,7 +308,7 @@ program
   .command('complete <slug>')
   .description('Mark an experiment as completed')
   .action(async (slug) => {
-    await requireAuth('complete experiments', async (auth) => {
+    await requireAuth('complete experiments', async () => {
       try {
         const experiment = await prisma.experiment.update({
         where: { slug },
@@ -339,7 +335,7 @@ program
   .command('stats <slug>')
   .description('Show experiment statistics')
   .action(async (slug) => {
-    await requireAuth('view experiment stats', async (auth) => {
+    await requireAuth('view experiment stats', async () => {
       try {
         const experiment = await prisma.experiment.findUnique({
         where: { slug },
@@ -396,16 +392,33 @@ program
     }, true); // Require admin permissions
   });
 
-// List video library command
+// List video library command with enhanced filtering
 program
   .command('list-videos')
   .description('List all videos in the video library')
-  .action(async () => {
-    await requireAuth('list videos', async (auth) => {
+  .option('--model <model>', 'Filter by model name')
+  .option('--scenario <scenario>', 'Filter by scenario')
+  .option('--tag <tag>', 'Filter by tag')
+  .option('--group <group>', 'Filter by group')
+  .action(async (options) => {
+    await requireAuth('list videos', async () => {
       try {
         console.log(chalk.blue.bold('\n📹 Video Library\n'));
         
-        const response = await fetch('http://localhost:3000/api/video-library');
+        // Use new videos API with metadata support
+        let url = 'http://localhost:3000/api/videos';
+        const params = new URLSearchParams();
+        
+        if (options.model) params.append('model', options.model);
+        if (options.scenario) params.append('scenario', options.scenario);
+        if (options.tag) params.append('tag', options.tag);
+        if (options.group) params.append('group', options.group);
+        
+        if (params.toString()) {
+          url += '?' + params.toString();
+        }
+        
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${await response.text()}`);
         }
@@ -414,7 +427,7 @@ program
         
         if (videos.length === 0) {
           console.log(chalk.gray('No videos found in library.'));
-          console.log(chalk.gray('Upload videos using: npm run upload-videos --dir <directory>'));
+          console.log(chalk.gray('Upload videos using: experiment-cli upload-videos --dir <directory>'));
           return;
         }
         
@@ -424,7 +437,21 @@ program
           console.log(chalk.white(`${index + 1}. ${video.name}`));
           console.log(chalk.gray(`   Uploaded: ${new Date(video.uploadedAt).toLocaleDateString()}`));
           console.log(chalk.gray(`   Size: ${(video.size / (1024 * 1024)).toFixed(1)} MB`));
-          console.log(chalk.gray(`   URL: ${video.url}\n`));
+          
+          if (video.modelName) {
+            console.log(chalk.cyan(`   Model: ${video.modelName}`));
+          }
+          if (video.scenarioId) {
+            console.log(chalk.cyan(`   Scenario: ${video.scenarioId}`));
+          }
+          if (video.tags && video.tags.length > 0) {
+            console.log(chalk.magenta(`   Tags: ${video.tags.join(', ')}`));
+          }
+          if (video.groups && video.groups.length > 0) {
+            console.log(chalk.blue(`   Groups: ${video.groups.join(', ')}`));
+          }
+          
+          console.log(chalk.gray(`   URL: ${video.url || video.path}\n`));
         });
         
       } catch (error) {
@@ -433,14 +460,225 @@ program
     }, true);
   });
 
+// Bulk edit videos command
+program
+  .command('bulk-edit-videos')
+  .description('Bulk edit video metadata')
+  .option('--pattern <pattern>', 'File name pattern to match')
+  .option('--model <model>', 'Filter by existing model name')
+  .option('--scenario <scenario>', 'Filter by existing scenario')
+  .option('--set-model <model>', 'Set model name')
+  .option('--set-scenario <scenario>', 'Set scenario ID')
+  .option('--add-tags <tags>', 'Add tags (comma-separated)')
+  .option('--remove-tags <tags>', 'Remove tags (comma-separated)')
+  .option('--add-groups <groups>', 'Add groups (comma-separated)')
+  .option('--remove-groups <groups>', 'Remove groups (comma-separated)')
+  .option('--operation <op>', 'Operation mode (add|replace|remove)', 'add')
+  .action(async (options) => {
+    await requireAuth('bulk edit videos', async () => {
+      try {
+        console.log(chalk.blue.bold('\n✏️  Bulk editing videos\n'));
+        
+        // Get videos to edit
+        let url = 'http://localhost:3000/api/videos';
+        const params = new URLSearchParams();
+        
+        if (options.model) params.append('model', options.model);
+        if (options.scenario) params.append('scenario', options.scenario);
+        
+        if (params.toString()) {
+          url += '?' + params.toString();
+        }
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch videos: ${response.status}`);
+        }
+        
+        let videos = await response.json();
+        
+        // Filter by pattern if provided
+        if (options.pattern) {
+          const pattern = new RegExp(options.pattern.replace(/\*/g, '.*'), 'i');
+          videos = videos.filter((v: any) => pattern.test(v.name));
+        }
+        
+        if (videos.length === 0) {
+          console.log(chalk.yellow('No videos match the specified criteria.'));
+          return;
+        }
+        
+        console.log(chalk.white(`Found ${videos.length} videos to edit:\n`));
+        videos.forEach((video: any, index: number) => {
+          console.log(chalk.gray(`${index + 1}. ${video.name}`));
+        });
+        
+        // Prepare bulk edit data
+        const updates: any = {};
+        const operation = options.operation;
+        
+        if (options.setModel) updates.modelName = options.setModel;
+        if (options.setScenario) updates.scenarioId = options.setScenario;
+        
+        if (options.addTags) {
+          updates.tags = {
+            operation,
+            values: options.addTags.split(',').map((t: string) => t.trim())
+          };
+        }
+        
+        if (options.removeTags) {
+          updates.tags = {
+            operation: 'remove',
+            values: options.removeTags.split(',').map((t: string) => t.trim())
+          };
+        }
+        
+        if (options.addGroups) {
+          updates.groups = {
+            operation,
+            values: options.addGroups.split(',').map((g: string) => g.trim())
+          };
+        }
+        
+        if (options.removeGroups) {
+          updates.groups = {
+            operation: 'remove',
+            values: options.removeGroups.split(',').map((g: string) => g.trim())
+          };
+        }
+        
+        if (Object.keys(updates).length === 0) {
+          console.log(chalk.yellow('No updates specified. Use --set-model, --add-tags, etc.'));
+          return;
+        }
+        
+        // Apply bulk edits
+        const videoIds = videos.map((v: any) => v.id);
+        const bulkEditResponse = await fetch('http://localhost:3000/api/videos/bulk-edit', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            videoIds,
+            updates
+          })
+        });
+        
+        if (!bulkEditResponse.ok) {
+          const error = await bulkEditResponse.json();
+          throw new Error(error.error || 'Failed to bulk edit videos');
+        }
+        
+        const result = await bulkEditResponse.json();
+        console.log(chalk.green.bold(`\n✅ Updated ${result.updatedCount} videos successfully!`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error bulk editing videos:'), error);
+      }
+    }, true);
+  });
+
+// Bulk experiment creation command
+program
+  .command('create-bulk')
+  .description('Create multiple experiments using matrix mode')
+  .option('-m, --models <models>', 'Comma-separated list of models')
+  .option('-s, --scenarios <scenarios>', 'Comma-separated list of scenarios')
+  .option('-g, --group <group>', 'Experiment group for organization')
+  .option('--strategy <strategy>', 'Video assignment strategy (auto|random|manual)', 'auto')
+  .option('--seed <seed>', 'Random seed for reproducible assignment')
+  .option('--randomize-order', 'Randomize comparison order')
+  .option('--randomize-positions', 'Randomize model positions (A/B swapping)')
+  .action(async (options) => {
+    await requireAuth('create bulk experiments', async (auth) => {
+      console.log(chalk.blue.bold('\n🧪 Creating bulk experiments with matrix mode\n'));
+      
+      try {
+        const { question } = getReadline();
+        
+        // Get models and scenarios
+        const modelsInput = options.models || await question(
+          chalk.cyan('Models to compare (comma-separated): ')
+        );
+        const models = modelsInput.split(',').map((m: string) => m.trim());
+        
+        const scenariosInput = options.scenarios || await question(
+          chalk.cyan('Scenarios (comma-separated): ')
+        );
+        const scenarios = scenariosInput.split(',').map((s: string) => s.trim());
+        
+        const group = options.group || await question(
+          chalk.cyan('Experiment group (optional): ')
+        );
+        
+        const strategy = options.strategy;
+        const seed = options.seed ? parseInt(options.seed) : undefined;
+        
+        // Call bulk creation API
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        const response = await fetch(`${baseUrl}/api/experiments/bulk`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            models,
+            scenarios,
+            group: group || null,
+            videoAssignmentStrategy: strategy,
+            randomSeed: seed,
+            randomizeOrder: options.randomizeOrder || false,
+            randomizePositions: options.randomizePositions || false,
+            createdBy: auth.userId
+          })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to create bulk experiments');
+        }
+        
+        const result = await response.json();
+        
+        console.log(chalk.green.bold('\n✅ Bulk experiments created successfully!\n'));
+        console.log(chalk.white('Created:'), chalk.yellow(`${result.experiments.length} experiments`));
+        console.log(chalk.white('Total comparisons:'), chalk.yellow(result.totalComparisons));
+        
+        if (result.videoAssignments) {
+          console.log(chalk.white('Videos assigned:'), chalk.yellow(result.videoAssignments));
+        }
+        
+        console.log(chalk.blue('\n📋 Created experiments:'));
+        result.experiments.forEach((exp: any) => {
+          console.log(chalk.white(`- ${exp.name} (${exp.slug})`));
+        });
+        
+        if (result.warnings && result.warnings.length > 0) {
+          console.log(chalk.yellow('\n⚠️  Warnings:'));
+          result.warnings.forEach((warning: string) => {
+            console.log(chalk.yellow(`- ${warning}`));
+          });
+        }
+        
+      } catch (error) {
+        console.error(chalk.red('Error creating bulk experiments:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true); // Require admin permissions
+  });
+
 // Auto-assign videos to experiment
 program
   .command('assign-videos')
   .description('Auto-assign videos from library to experiment comparisons')
   .option('-e, --experiment <slug>', 'Experiment slug')
-  .option('--auto', 'Automatically match videos based on filename patterns')
+  .option('--strategy <strategy>', 'Assignment strategy (auto|random|manual)', 'auto')
+  .option('--seed <seed>', 'Random seed for reproducible assignment')
   .action(async (options) => {
-    await requireAuth('assign videos', async (auth) => {
+    await requireAuth('assign videos', async () => {
       try {
         console.log(chalk.blue.bold('\n🎯 Assigning Videos to Experiment\n'));
         
@@ -477,9 +715,19 @@ program
         console.log(chalk.white(`Found experiment: ${experiment.name}`));
         console.log(chalk.white(`Available videos: ${videos.length}`));
         
-        if (options.auto) {
-          // Auto-assign based on filename patterns
-          console.log(chalk.blue('\n🤖 Auto-assigning videos based on filename patterns...\n'));
+        const strategy = options.strategy || 'auto';
+        const seed = options.seed ? parseInt(options.seed) : undefined;
+        
+        if (strategy === 'auto') {
+          // Auto-assign based on video metadata
+          console.log(chalk.blue('\n🤖 Auto-assigning videos based on metadata...\n'));
+          
+          // Use new video library API that supports metadata
+          const videoResponse = await fetch('http://localhost:3000/api/videos');
+          if (!videoResponse.ok) {
+            throw new Error(`Failed to fetch video library: ${videoResponse.status}`);
+          }
+          const videosWithMetadata = await videoResponse.json();
           
           const config = experiment.config as any;
           const models = config?.models || [];
@@ -493,26 +741,40 @@ program
                 const modelA = models[i];
                 const modelB = models[j];
                 
-                // Find videos matching the pattern: {scenario}_{model}.mp4
-                const videoA = videos.find((v: any) => 
-                  v.name.toLowerCase().includes(scenario.toLowerCase()) && 
-                  v.name.toLowerCase().includes(modelA.toLowerCase())
+                // Find videos by metadata first, fallback to filename patterns
+                let videoA = videosWithMetadata.find((v: any) => 
+                  v.modelName === modelA && v.scenarioId === scenario
                 );
-                const videoB = videos.find((v: any) => 
-                  v.name.toLowerCase().includes(scenario.toLowerCase()) && 
-                  v.name.toLowerCase().includes(modelB.toLowerCase())
+                let videoB = videosWithMetadata.find((v: any) => 
+                  v.modelName === modelB && v.scenarioId === scenario
                 );
+                
+                // Fallback to filename patterns if metadata not available
+                if (!videoA) {
+                  videoA = videosWithMetadata.find((v: any) => 
+                    v.name.toLowerCase().includes(scenario.toLowerCase()) && 
+                    v.name.toLowerCase().includes(modelA.toLowerCase())
+                  );
+                }
+                if (!videoB) {
+                  videoB = videosWithMetadata.find((v: any) => 
+                    v.name.toLowerCase().includes(scenario.toLowerCase()) && 
+                    v.name.toLowerCase().includes(modelB.toLowerCase())
+                  );
+                }
                 
                 if (videoA && videoB) {
                   comparisons.push({
                     scenarioId: scenario,
                     modelA,
                     modelB,
-                    videoAPath: videoA.url,
-                    videoBPath: videoB.url,
+                    videoAPath: videoA.url || videoA.path,
+                    videoBPath: videoB.url || videoB.path,
                     metadata: {
                       videoAName: videoA.name,
-                      videoBName: videoB.name
+                      videoBName: videoB.name,
+                      videoAId: videoA.id,
+                      videoBId: videoB.id
                     }
                   });
                   
@@ -542,20 +804,36 @@ program
             
             console.log(chalk.green.bold(`\n✅ Created ${comparisons.length} comparisons!`));
           } else {
-            console.log(chalk.red('\nNo matching videos found. Check your filename patterns.'));
-            console.log(chalk.gray('Expected pattern: {scenario}_{model}.mp4'));
+            console.log(chalk.red('\nNo matching videos found. Check your video metadata or filename patterns.'));
+            console.log(chalk.gray('Expected: videos with modelName and scenarioId metadata, or pattern {scenario}_{model}.mp4'));
           }
+          
+        } else if (strategy === 'random') {
+          console.log(chalk.blue('\n🎲 Random video assignment...\n'));
+          
+          // Get videos with metadata
+          const videoResponse = await fetch('http://localhost:3000/api/videos');
+          if (!videoResponse.ok) {
+            throw new Error(`Failed to fetch video library: ${videoResponse.status}`);
+          }
+          await videoResponse.json();
+          
+          if (seed) {
+            console.log(chalk.gray(`Using random seed: ${seed}`));
+          }
+          
+          // Implement random assignment logic here
+          console.log(chalk.yellow('Random assignment implementation coming soon'));
           
         } else {
           // Interactive assignment
           console.log(chalk.blue('\n📋 Interactive video assignment (coming soon)'));
-          console.log(chalk.gray('Use --auto flag for automatic assignment based on filename patterns'));
+          console.log(chalk.gray('Use --strategy auto for automatic assignment based on metadata or filename patterns'));
         }
         
       } catch (error) {
         console.error(chalk.red('Error assigning videos:'), error);
       } finally {
-        if (rl) rl.close();
         await prisma.$disconnect();
       }
     }, true);

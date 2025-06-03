@@ -1,150 +1,134 @@
 # OWL Evaluation Framework
 
-A comprehensive human evaluation platform for diffusion world models featuring A/B testing, comparative analysis, and large-scale study management through Prolific integration.
+A comprehensive Next.js platform for conducting rigorous human evaluations of diffusion world models through A/B testing, comparative analysis, and large-scale crowd-sourced studies.
 
 ## Overview
 
-The OWL evaluation framework provides a complete solution for conducting rigorous human evaluations of AI-generated videos from diffusion world models. Built with modern web technologies, it offers synchronized video comparison, structured evaluation criteria, real-time analytics, and seamless integration with crowd-sourcing platforms.
+Built with Next.js 14, this framework provides synchronized video comparison, structured evaluation criteria, real-time analytics, and seamless Prolific integration for evaluating AI-generated videos.
 
 ## Key Features
 
-- **Modern Web Interface**: Next.js-based evaluation platform with synchronized dual video playback
-- **Structured Evaluation**: Four-dimension rating system (Overall Quality, Controllability, Visual Quality, Temporal Consistency)
-- **Real-time Analytics**: Admin dashboard with progress tracking and performance visualization
-- **Prolific Integration**: Automated study creation and management for large-scale evaluations
-- **CLI Tools**: Powerful command-line interface for experiment management
-- **Statistical Analysis**: Built-in tools for inter-rater reliability and significance testing
+- **Synchronized Video Comparison**: Frame-perfect dual video playback
+- **Multi-dimensional Evaluation**: Four research-validated dimensions (Overall Quality, Controllability, Visual Quality, Temporal Consistency)
+- **Real-time Analytics**: Admin dashboard with live progress tracking
+- **Prolific Integration**: Automated study creation and participant management
+- **Bulk Operations**: Matrix mode experiment creation and video library management
+- **CLI Tools**: Comprehensive command-line interface for automation
+- **Modern Architecture**: Next.js 14 with TypeScript, Tailwind CSS, and PostgreSQL
 
 ## Architecture
 
 ```
-owl-eval/
-├── eval/                           # Main evaluation framework
-│   ├── frontend/                   # Next.js web application
-│   │   ├── src/app/               # Pages and API routes
-│   │   ├── src/components/        # UI components
-│   │   └── src/lib/              # Core evaluation logic
-│   ├── models/                    # Model interfaces and loaders
-│   ├── evaluation/                # Evaluation framework and criteria
-│   ├── scripts/                   # CLI tools for experiment management
-│   ├── prolific/                  # Prolific platform integration
-│   └── analysis/                  # Statistical analysis tools
+eval/
+├── frontend/                    # Next.js 14 application
+│   ├── src/app/                # App Router pages and API routes
+│   ├── src/components/         # UI components
+│   ├── src/lib/               # Core logic
+│   └── prisma/                # Database schema
+├── scripts/                     # CLI tools
+├── models/                      # Model interfaces
+└── evaluation/                  # Test scenarios and criteria
 ```
 
 ## Quick Start
 
 ### Prerequisites
-
 - Node.js 18+
-- Python 3.8+
-- Optional: GPU for running actual models
+- PostgreSQL database
+- Stack Auth account (for admin access)
 
 ### Installation
 
-1. **Clone and install dependencies:**
-   ```bash
-   git clone <repository-url>
-   cd owl-eval/eval
-   npm install
-   pip install -r requirements.txt
-   ```
-
-2. **Set up environment:**
-   ```bash
-   cd frontend
-   cp .env.local.example .env.local
-   # Edit .env.local with your configuration
-   ```
-
-3. **Start the development server:**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-4. **Access the application:**
-   Open http://localhost:3000 in your browser
-
-### Docker Deployment
-
 ```bash
-cd eval
-docker-compose up
+# Clone and install
+cd eval/frontend
+npm install
+
+# Set up environment
+cp .env.local.example .env.local
+# Edit .env.local with your database and Stack Auth credentials
+
+# Set up database
+npx prisma generate
+npx prisma db push
+
+# Start development
+npm run dev
 ```
 
-## Usage Workflows
+**Access:** http://localhost:3000
 
-### Creating Experiments
+### Production Deployment
 
 ```bash
-# Interactive experiment creation
-cd eval
-npm run experiment-cli create
+# Docker
+cd eval && docker-compose up
 
-# With parameters
-npm run experiment-cli create --name "My Study" --slug "my-study"
+# Or manual
+npm run build && npm start
 ```
 
-### Running Evaluations
+## Usage
 
-1. Navigate to the web interface at http://localhost:3000
-2. Select an available experiment
-3. Complete video comparisons with structured ratings
-4. View results in the admin dashboard
+### CLI Commands
+
+```bash
+# Navigate to eval directory first
+cd eval
+
+# Create experiments
+npm run experiment-cli create --name "My Study"
+npm run experiment-cli create-bulk --models "genie-2b,diamond,sora" --scenarios "forest,desert,ocean"
+
+# Manage video library
+npm run experiment-cli list-videos --model "genie-2b"
+npm run experiment-cli bulk-edit-videos --pattern "forest_*.mp4" --set-model "genie-2b"
+npm run experiment-cli assign-videos --experiment my-study --strategy auto
+
+# Launch experiments
+npm run experiment-cli launch my-experiment --prolific --prolific-reward 8.00
+
+# View stats
+npm run experiment-cli list
+npm run experiment-cli stats my-experiment
+```
+
+### Web Interface
+
+- **Main Interface**: http://localhost:3000 (participant evaluations)
+- **Admin Dashboard**: http://localhost:3000/admin (requires Stack Auth login)
+- **Evaluation Flow**: Synchronized video playback with four-dimension ratings
+- **Prolific Integration**: Automatic participant tracking and completion codes
+
+## Key Features Details
+
+### Matrix Mode Experiments
+Automatically generates all possible model pair comparisons across scenarios:
+- `genie-2b vs diamond` across `forest, desert, ocean` = 3 experiments
+- Full matrix with 4 models × 3 scenarios = 18 pairwise experiments
+
+### Video Library Management
+- **Metadata Support**: Model names, scenario IDs, tags, groups
+- **Bulk Operations**: Pattern-based selection and editing
+- **Smart Assignment**: Auto-matches videos by metadata or filename patterns
 
 ### Prolific Integration
+- **Automated Study Creation**: CLI creates and links Prolific studies
+- **Participant Tracking**: Unique completion codes and session validation
+- **Payment Management**: Configurable rewards and participant counts
 
-```bash
-# Launch experiment with Prolific study
-npm run experiment-cli launch my-experiment --prolific \
-  --prolific-title "Evaluate AI Videos" \
-  --prolific-reward 8.00 \
-  --prolific-participants 100
-```
+### Authentication
+- **Stack Auth**: Secure admin dashboard access
+- **CLI Integration**: Browser-based authentication with 7-day token caching
+- **Role-based Access**: Admin-only experiment management
 
-### Analysis
+## Tech Stack
 
-```bash
-# Generate comprehensive analysis
-python scripts/analyze_results.py --data-dir ./data --statistical-tests
-```
-
-## Documentation
-
-- **Frontend Documentation**: `eval/README.md` - Detailed Next.js application guide
-- **Complete Documentation**: `eval/FULL_README.md` - Comprehensive technical documentation
-- **Frontend Specific**: `eval/frontend/README.md` - Frontend-specific setup and development
-
-## Development
-
-The framework uses modern development practices:
-
-- **Frontend**: Next.js 14 with TypeScript, Tailwind CSS, and Radix UI
-- **Backend**: Integrated API routes (no separate backend needed)
-- **Database**: Prisma with PostgreSQL for production deployments
-- **Testing**: Comprehensive test suites for reliability
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- **Next.js 14**: Full-stack React framework with App Router
+- **TypeScript**: Complete type safety
+- **Tailwind CSS + Radix UI**: Modern, accessible components
+- **Prisma + PostgreSQL**: Type-safe database operations
+- **Stack Auth**: Authentication and user management
 
 ## License
-
 MIT
-
-## Citation
-
-If you use this framework in your research, please cite:
-
-```bibtex
-@software{owl_eval_framework,
-  title = {OWL Human Evaluation Framework for Diffusion World Models},
-  author = {OWL Team},
-  year = {2024},
-  url = {https://github.com/your-org/owl-eval}
-}
-```

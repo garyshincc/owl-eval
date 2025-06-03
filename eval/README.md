@@ -1,108 +1,70 @@
 # OWL Human Evaluation Framework
 
-A comprehensive Next.js-based platform for conducting rigorous human evaluations of diffusion world models through A/B testing, comparative analysis, and large-scale crowd-sourced studies.
+A comprehensive Next.js-based platform for conducting human evaluations of diffusion world models through A/B testing and comparative analysis.
 
 ## Overview
 
-The OWL evaluation framework provides a modern, full-stack solution for evaluating AI-generated videos from diffusion world models. It combines sophisticated evaluation methodologies with an intuitive web interface to deliver reliable, statistically significant results.
+This framework provides a modern web interface for A/B testing diffusion world models through:
+- Side-by-side video comparison with synchronized playback
+- Structured evaluation across four key dimensions
+- Real-time progress tracking and analytics
+- Support for both local testing and crowd-sourced evaluations via Prolific
 
-### Key Capabilities
+## Architecture
 
-- **Synchronized Video Comparison**: Side-by-side playback with frame-perfect synchronization
-- **Multi-dimensional Evaluation**: Structured rating across four research-validated dimensions
-- **Real-time Analytics**: Live progress tracking with statistical confidence intervals
-- **Prolific Integration**: Automated study creation and management for crowd-sourcing
-- **CLI Automation**: Powerful command-line tools for experiment lifecycle management
-- **Statistical Rigor**: Built-in tools for inter-rater reliability and significance testing
-
-## Modern Architecture
-
-Built entirely with **Next.js 14** for optimal performance and developer experience:
-
-- **App Router**: Modern React Server Components architecture
-- **Integrated API**: Backend functionality through API routes (no separate server needed)
-- **TypeScript**: Full type safety across frontend and backend
-- **Tailwind CSS + Radix UI**: Beautiful, accessible components with consistent design
-- **Prisma ORM**: Type-safe database operations with automatic migrations
-- **Edge Runtime**: Optimized for serverless deployment
+The entire application is built with **Next.js 14**, using:
+- **App Router** for modern React Server Components
+- **API Routes** for backend functionality (no separate backend needed!)
+- **TypeScript** for type safety
+- **Tailwind CSS** + **Radix UI** for beautiful, accessible components
+- **File-based data storage** for simplicity (easily swappable for a database)
 
 ```
 eval/
-├── frontend/                    # Next.js 14 application
+├── frontend/                    # Next.js application
 │   ├── src/
-│   │   ├── app/                # App Router pages and API routes
-│   │   │   ├── api/           # Backend API endpoints
-│   │   │   ├── admin/         # Admin dashboard
-│   │   │   ├── evaluate/      # Evaluation interface
-│   │   │   └── prolific/      # Prolific integration flows
-│   │   ├── components/        # Reusable UI components
-│   │   │   ├── admin/         # Admin-specific components
-│   │   │   └── ui/           # Base UI components
-│   │   ├── lib/              # Core business logic
-│   │   │   ├── evaluation/   # A/B testing framework
-│   │   │   └── analysis/     # Statistical analysis
-│   │   └── types/            # TypeScript definitions
-│   ├── prisma/               # Database schema and migrations
-│   └── public/               # Static assets and videos
+│   │   ├── app/                # Pages and API routes
+│   │   ├── components/         # Reusable UI components
+│   │   └── lib/               # Core logic (evaluation, analysis)
+│   └── public/                # Static assets
 ├── models/                    # Model interfaces and loaders
-├── evaluation/                # Evaluation criteria and test scenarios
-├── scripts/                   # CLI tools and automation
-├── prolific/                  # Prolific platform integration
-├── analysis/                  # Advanced statistical analysis
+├── evaluation/                # Evaluation framework and criteria
+├── scripts/                   # CLI tools for experiment management
+├── prolific/                  # Prolific integration
+├── analysis/                  # Statistical analysis tools
 └── data/                     # Generated evaluations and results
 ```
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+ (required)
-- Python 3.8+ (for CLI tools and data generation)
-- PostgreSQL (for production) or SQLite (for development)
+- Node.js 18+
+- Python 3.8+ (only for generating test data)
 
-### Development Setup
+### Installation & Running
 
-1. **Install dependencies:**
+1. **Clone and install:**
 ```bash
 cd eval/frontend
 npm install
-cd ..
-pip install -r requirements.txt
 ```
 
-2. **Configure environment:**
+2. **Set up environment:**
 ```bash
-cd frontend
 cp .env.local.example .env.local
-# Edit .env.local with your database and API settings
 ```
 
-3. **Set up database:**
-```bash
-cd frontend
-npx prisma generate
-npx prisma db push
-```
-
-4. **Start development server:**
+3. **Run the development server:**
 ```bash
 npm run dev
 ```
 
-5. **Access the application:**
-   - Main interface: http://localhost:3000
-   - Admin dashboard: http://localhost:3000/admin
+Access the application at http://localhost:3000
 
-### Production Deployment
+### Docker Deployment
 
 ```bash
-# Using Docker Compose
-cd eval
-docker-compose up -d
-
-# Or manual deployment
-cd frontend
-npm run build
-npm start
+docker-compose up
 ```
 
 ## Key Features
@@ -119,7 +81,6 @@ npm start
 - Real-time evaluation statistics
 - Model performance visualization with radar charts
 - Progress tracking across scenarios
-- Experiment grouping for organization
 - Exportable results
 
 ### 3. API Routes (Built into Next.js!)
@@ -129,12 +90,6 @@ GET  /api/comparisons/[id]         # Get specific comparison
 POST /api/submit-evaluation        # Submit evaluation results
 GET  /api/evaluation-stats         # Get statistics
 GET  /api/model-performance        # Get performance metrics
-
-# Prolific Integration
-POST /api/prolific/studies         # Create Prolific study
-GET  /api/prolific/studies         # List Prolific studies
-GET  /api/prolific/studies/[id]    # Get study details
-PUT  /api/prolific/studies/[id]    # Update study (publish/pause)
 ```
 
 ### 4. Data Generation (Python Scripts)
@@ -171,130 +126,22 @@ python -m scripts.cli export-scenarios
 
 ## Prolific Integration
 
-### Setup
+For crowd-sourced evaluations:
 
-1. **Configure environment variables:**
+1. Set up Prolific API token:
 ```bash
-# Required for Prolific integration
-PROLIFIC_API_TOKEN=your-prolific-api-token
-NEXT_PUBLIC_APP_URL=https://your-domain.com
+export PROLIFIC_API_TOKEN=your-token
 ```
 
-2. **Get your Prolific API token:**
-   - Sign up at [Prolific](https://prolific.co)
-   - Navigate to Settings → API Tokens
-   - Create a new token with study management permissions
-
-### Creating Studies
-
-#### Option 1: Through Admin Interface
-1. Go to `/admin` → Experiments tab
-2. Click "Launch on Prolific" for any experiment
-3. Configure study parameters (title, description, reward, participants)
-4. Study will be created and linked automatically
-
-#### Option 2: Via CLI (Recommended)
+2. Create a study:
 ```bash
-# Basic launch with Prolific study
-npm run experiment launch diamond-vs-genie-world-models --prolific
-
-# Custom study parameters
-npm run experiment launch my-experiment --prolific \
-  --prolific-title "Custom Study Title" \
-  --prolific-description "Evaluate AI-generated videos" \
-  --prolific-reward 10.00 \
-  --prolific-participants 100
+python scripts/prolific_cli.py create-study \
+  --name "Matrix-Game Study" \
+  --participants 100
 ```
 
-The CLI will return the Prolific study URL for easy access:
-```
-🚀 Experiment launched!
-
-Prolific Study: https://app.prolific.co/researcher/studies/abc123
-Evaluation URL: https://your-domain.com/evaluate/my-experiment
-```
-
-### Study Management
-
-#### Publish/Pause Studies
-```bash
-# Through API or admin interface
-PUT /api/prolific/studies/[studyId]
-{ "action": "publish" }  # or "pause", "stop"
-```
-
-#### Monitor Progress
-- View real-time participant progress in the admin dashboard
-- Track completion rates and submission quality
-- Export results for analysis
-
-### Participant Flow
-
-1. **Prolific redirects** participants to: `/prolific?PROLIFIC_PID=...&experiment_id=...`
-2. **Participants complete** evaluations at: `/evaluate/[experimentId]`
-3. **Completion code** is automatically provided upon finishing
-4. **Automatic approval** for quality submissions (configurable)
-
-### Best Practices
-
-- **Test locally first** before creating Prolific studies
-- **Set appropriate rewards** based on estimated completion time (2 minutes per comparison)
-- **Monitor quality** through the admin dashboard
-- **Use descriptive titles** that clearly explain the task
-- **Provide clear instructions** in the study description
-
-## CLI Reference
-
-The experiment CLI provides powerful tools for managing experiments and Prolific studies:
-
-### Basic Commands
-```bash
-# Create a new experiment (interactive)
-npm run experiment create
-
-# Create with parameters
-npm run experiment create --name "My Study" --slug "my-study" --group "research-phase-1"
-
-# List all experiments
-npm run experiment list
-
-# Get experiment statistics
-npm run experiment stats my-experiment-slug
-```
-
-### Prolific Integration Commands
-```bash
-# Launch experiment with basic Prolific study
-npm run experiment launch my-experiment --prolific
-
-# Launch with custom Prolific parameters
-npm run experiment launch my-experiment --prolific \
-  --prolific-title "Custom Study Title" \
-  --prolific-description "Detailed study description" \
-  --prolific-reward 12.50 \
-  --prolific-participants 200
-
-# List video library
-npm run experiment list-videos
-
-# Auto-assign videos to experiment
-npm run experiment assign-videos --experiment my-experiment --auto
-```
-
-### CLI Options Reference
-
-#### Experiment Creation
-- `--name <string>`: Experiment name
-- `--slug <string>`: URL-friendly slug (auto-generated if not provided)
-- `--description <string>`: Experiment description
-- `--group <string>`: Experiment group for organization (optional)
-
-#### Prolific Integration  
-- `--prolific`: Create a Prolific study when launching
-- `--prolific-title <string>`: Custom study title (default: "Evaluate {experiment-name}")
-- `--prolific-description <string>`: Custom study description
-- `--prolific-reward <number>`: Reward per participant in USD (default: 8.00)
-- `--prolific-participants <number>`: Number of participants to recruit (default: 50)
+3. Participants access via special URL with their ID
+4. Completion codes displayed automatically
 
 ## Development
 
