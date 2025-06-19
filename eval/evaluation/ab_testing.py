@@ -1,17 +1,23 @@
 """
 A/B testing framework for comparing world generation models.
+Stores videos in Tigris and metadata in PostgreSQL.
 """
 
-import random
+import os
 import uuid
+import json
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
-import json
-import os
 import numpy as np
+import imageio
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import boto3
+from botocore.exceptions import ClientError
 
-from ..models.base_model import BaseWorldModel
+from models.base_model import BaseWorldModel
 
 
 @dataclass
@@ -21,12 +27,13 @@ class VideoComparison:
     scenario_id: str
     model_a_name: str
     model_b_name: str
-    model_a_video_path: str
-    model_b_video_path: str
+    model_a_video_url: str
+    model_b_video_url: str
     action_sequence: List[Dict[str, Any]]
     scenario_metadata: Dict[str, Any]
     randomized_labels: Dict[str, str]  # Maps "A"/"B" to actual model names
     created_at: datetime
+    experiment_id: str
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -35,12 +42,13 @@ class VideoComparison:
             "scenario_id": self.scenario_id,
             "model_a_name": self.model_a_name,
             "model_b_name": self.model_b_name,
-            "model_a_video_path": self.model_a_video_path,
-            "model_b_video_path": self.model_b_video_path,
+            "model_a_video_url": self.model_a_video_url,
+            "model_b_video_url": self.model_b_video_url,
             "action_sequence": self.action_sequence,
             "scenario_metadata": self.scenario_metadata,
             "randomized_labels": self.randomized_labels,
-            "created_at": self.created_at.isoformat()
+            "created_at": self.created_at.isoformat(),
+            "experiment_id": self.experiment_id
         }
 
 
@@ -51,9 +59,10 @@ class EvaluationResult:
     comparison_id: str
     evaluator_id: str
     dimension_scores: Dict[str, str]  # dimension -> selected model ("A" or "B")
-    detailed_ratings: Dict[str, int]  # criterion -> rating value
-    completion_time_seconds: float
-    submitted_at: datetime
+    # detailed_ratings: Dict[str, int]  # criterion -> rating value
+    evaluation_time_seconds: float
+    created_at: datetime
+    status: str
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -62,26 +71,153 @@ class EvaluationResult:
             "comparison_id": self.comparison_id,
             "evaluator_id": self.evaluator_id,
             "dimension_scores": self.dimension_scores,
-            "detailed_ratings": self.detailed_ratings,
-            "completion_time_seconds": self.completion_time_seconds,
-            "submitted_at": self.submitted_at.isoformat()
+            # "detailed_ratings": self.detailed_ratings,
+            "evaluation_time_seconds": self.evaluation_time_seconds,
+            "created_at": self.created_at.isoformat(),
+            "status": self.status
         }
 
 
 class ABTestingFramework:
-    """Framework for conducting A/B tests between world generation models."""
+    """Framework for conducting A/B tests with database storage."""
     
-    def __init__(self, output_dir: str = "./data/ab_tests"):
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+    def __init__(self, experiment_name: str, experiment_description: str = ""):
+        self.experiment_name = experiment_name
+        self.experiment_description = experiment_description
+        self.experiment_id = None
         
-        # Create subdirectories
-        self.videos_dir = os.path.join(output_dir, "videos")
-        self.comparisons_dir = os.path.join(output_dir, "comparisons")
-        self.results_dir = os.path.join(output_dir, "results")
+        # Initialize database connection
+        self.db_connection = self._connect_to_database()
         
-        for dir_path in [self.videos_dir, self.comparisons_dir, self.results_dir]:
-            os.makedirs(dir_path, exist_ok=True)
+        # Initialize Tigris S3 client
+        self.s3_client = self._initialize_tigris_client()
+        self.bucket_name = os.getenv('TIGRIS_BUCKET_NAME', 'eval-data')
+        
+        # Create experiment in database
+        self._create_experiment()
+    
+    def _connect_to_database(self):
+        """Connect to PostgreSQL database."""
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            raise ValueError("DATABASE_URL environment variable not set")
+        
+        try:
+            conn = psycopg2.connect(database_url)
+            conn.autocommit = True
+            return conn
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to database: {e}")
+    
+    def _initialize_tigris_client(self):
+        """Initialize Tigris S3 client."""
+        return boto3.client(
+            's3',
+            endpoint_url=os.getenv('AWS_ENDPOINT_URL_S3', 'https://fly.storage.tigris.dev'),
+            region_name=os.getenv('AWS_REGION', 'auto'),
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
+        )
+    
+    def _create_experiment(self):
+        """Create experiment in database following Prisma schema."""
+        with self.db_connection.cursor() as cursor:
+            # Generate unique experiment ID and slug
+            experiment_id = str(uuid.uuid4())
+            base_slug = self.experiment_name.lower().replace(' ', '-').replace('_', '-')
+            slug = base_slug
+            
+            # Ensure slug is unique
+            counter = 1
+            while True:
+                cursor.execute('SELECT COUNT(*) FROM "Experiment" WHERE slug = %s', (slug,))
+                if cursor.fetchone()[0] == 0:
+                    break
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            cursor.execute("""
+                INSERT INTO "Experiment" (
+                    id, slug, name, description, status, config, "updatedAt"
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id
+            """, (
+                experiment_id,
+                slug,
+                self.experiment_name,
+                self.experiment_description or '',
+                'draft',
+                json.dumps({}),
+                datetime.now()
+            ))
+            
+            result = cursor.fetchone()
+            self.experiment_id = result[0]
+            print(f"Created experiment: {self.experiment_name} (ID: {self.experiment_id})")
+    
+    def _upload_video_to_tigris(self, frames: np.ndarray, key: str) -> str:
+        """Upload video frames to Tigris and return URL."""
+        # Ensure frames are in the right format
+        if frames.dtype != np.uint8:
+            frames = (frames * 255).astype(np.uint8)
+        
+        # Create temporary file for video
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_file:
+            try:
+                # Save video to temporary file
+                imageio.mimwrite(temp_file.name, frames, fps=16, codec='libx264')
+                
+                # Upload to Tigris
+                with open(temp_file.name, 'rb') as video_file:
+                    self.s3_client.upload_fileobj(
+                        video_file,
+                        self.bucket_name,
+                        key,
+                        ExtraArgs={
+                            'ContentType': 'video/mp4',
+                            'ACL': 'public-read'
+                        }
+                    )
+                
+                # Generate public URL
+                endpoint = os.getenv('AWS_ENDPOINT_URL_S3', 'https://fly.storage.tigris.dev').replace('https://', '')
+                video_url = f"https://{endpoint}/{self.bucket_name}/{key}"
+                
+                print(f"Uploaded video to: {video_url}")
+                return video_url
+                
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
+    
+    def _save_comparison_to_database(self, comparison: VideoComparison):
+        """Save comparison metadata to database following Prisma schema."""
+        with self.db_connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO "Comparison" (
+                    id, "experimentId", "scenarioId", "modelA", "modelB",
+                    "videoAPath", "videoBPath", metadata
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """, (
+                comparison.comparison_id,
+                comparison.experiment_id,
+                comparison.scenario_id,
+                comparison.model_a_name,
+                comparison.model_b_name,
+                comparison.model_a_video_url,
+                comparison.model_b_video_url,
+                json.dumps({
+                    'actionSequence': comparison.action_sequence,
+                    'scenarioMetadata': comparison.scenario_metadata,
+                    'randomizedLabels': comparison.randomized_labels
+                })
+            ))
+        
+        print(f"Saved comparison to database: {comparison.comparison_id}")
     
     def create_comparison(
         self,
@@ -102,12 +238,14 @@ class ABTestingFramework:
             randomize_order: Whether to randomize which model is shown as "A" or "B"
             
         Returns:
-            VideoComparison object with generated videos
+            VideoComparison object with videos uploaded to Tigris
         """
         comparison_id = str(uuid.uuid4())
         
-        # Generate videos from both models
+        print(f"Creating comparison {comparison_id}")
         print(f"Generating video for {model_a.model_name}...")
+        
+        # Generate videos from both models
         video_a = model_a.generate_video(
             reference_image=reference_image,
             actions=scenario["actions"],
@@ -121,29 +259,25 @@ class ABTestingFramework:
             num_frames=scenario["duration_frames"]
         )
         
-        # Save videos
-        video_a_path = os.path.join(
-            self.videos_dir, 
-            f"{comparison_id}_model_a_{model_a.model_name.replace('/', '_')}.mp4"
-        )
-        video_b_path = os.path.join(
-            self.videos_dir,
-            f"{comparison_id}_model_b_{model_b.model_name.replace('/', '_')}.mp4"
-        )
+        # Generate Tigris keys
+        key_a = f"experiments/{self.experiment_id}/comparisons/{comparison_id}/model_a.mp4"
+        key_b = f"experiments/{self.experiment_id}/comparisons/{comparison_id}/model_b.mp4"
         
-        self._save_video(video_a, video_a_path)
-        self._save_video(video_b, video_b_path)
+        # Upload videos to Tigris
+        print("Uploading videos to Tigris...")
+        url_a = self._upload_video_to_tigris(video_a, key_a)
+        url_b = self._upload_video_to_tigris(video_b, key_b)
         
         # Randomize labels if requested
-        if randomize_order and random.random() < 0.5:
+        if randomize_order and np.random.random() < 0.5:
             # Swap the models
             randomized_labels = {"A": model_b.model_name, "B": model_a.model_name}
-            display_video_a = video_b_path
-            display_video_b = video_a_path
+            display_url_a = url_b
+            display_url_b = url_a
         else:
             randomized_labels = {"A": model_a.model_name, "B": model_b.model_name}
-            display_video_a = video_a_path
-            display_video_b = video_b_path
+            display_url_a = url_a
+            display_url_b = url_b
         
         # Create comparison object
         comparison = VideoComparison(
@@ -151,16 +285,17 @@ class ABTestingFramework:
             scenario_id=scenario.get("id", scenario["name"]),
             model_a_name=model_a.model_name,
             model_b_name=model_b.model_name,
-            model_a_video_path=display_video_a,
-            model_b_video_path=display_video_b,
+            model_a_video_url=display_url_a,
+            model_b_video_url=display_url_b,
             action_sequence=scenario["actions"],
             scenario_metadata=scenario,
             randomized_labels=randomized_labels,
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            experiment_id=self.experiment_id
         )
         
-        # Save comparison metadata
-        self._save_comparison(comparison)
+        # Save to database
+        self._save_comparison_to_database(comparison)
         
         return comparison
     
@@ -196,15 +331,21 @@ class ABTestingFramework:
                 for j in range(i + 1, len(model_names))
             ]
         
-        for scenario in scenarios:
+        print(f"Creating {len(scenarios)} scenarios × {len(model_pairs)} model pairs × {pairs_per_scenario} repetitions = {len(scenarios) * len(model_pairs) * pairs_per_scenario} comparisons")
+        
+        for scenario_idx, scenario in enumerate(scenarios):
             scenario_biome = scenario.get("biome", "plains")
             ref_image = reference_images.get(
                 scenario.get("id", scenario["name"]),
                 reference_images.get(scenario_biome)
             )
             
-            for _ in range(pairs_per_scenario):
-                for model_a_name, model_b_name in model_pairs:
+            print(f"\nProcessing scenario {scenario_idx + 1}/{len(scenarios)}: {scenario['name']}")
+            
+            for rep in range(pairs_per_scenario):
+                for pair_idx, (model_a_name, model_b_name) in enumerate(model_pairs):
+                    print(f"  Pair {pair_idx + 1}/{len(model_pairs)}, Rep {rep + 1}: {model_a_name} vs {model_b_name}")
+                    
                     comparison = self.create_comparison(
                         model_a=models[model_a_name],
                         model_b=models[model_b_name],
@@ -215,121 +356,60 @@ class ABTestingFramework:
         
         return comparisons
     
-    def record_evaluation_result(
-        self,
-        comparison_id: str,
-        evaluator_id: str,
-        dimension_scores: Dict[str, str],
-        detailed_ratings: Dict[str, int],
-        completion_time_seconds: float
-    ) -> EvaluationResult:
-        """Record the results of a human evaluation."""
-        result = EvaluationResult(
-            result_id=str(uuid.uuid4()),
-            comparison_id=comparison_id,
-            evaluator_id=evaluator_id,
-            dimension_scores=dimension_scores,
-            detailed_ratings=detailed_ratings,
-            completion_time_seconds=completion_time_seconds,
-            submitted_at=datetime.now()
-        )
+    def finalize_experiment(self):
+        """Mark experiment as active and ready for evaluation."""
+        with self.db_connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE "Experiment" 
+                SET status = 'active'
+                WHERE id = %s
+            """, (self.experiment_id,))
         
-        # Save result
-        result_path = os.path.join(
-            self.results_dir,
-            f"{result.result_id}.json"
-        )
-        with open(result_path, 'w') as f:
-            json.dump(result.to_dict(), f, indent=2)
-        
-        return result
+        print(f"Experiment {self.experiment_name} is now active and ready for evaluation!")
+        print(f"Experiment ID: {self.experiment_id}")
     
-    def get_comparison(self, comparison_id: str) -> Optional[VideoComparison]:
-        """Load a comparison by ID."""
-        comparison_path = os.path.join(
-            self.comparisons_dir,
-            f"{comparison_id}.json"
-        )
-        
-        if not os.path.exists(comparison_path):
-            return None
-        
-        with open(comparison_path, 'r') as f:
-            data = json.load(f)
-        
-        # Convert back to VideoComparison
-        data["created_at"] = datetime.fromisoformat(data["created_at"])
-        return VideoComparison(**data)
-    
-    def get_results_for_comparison(
-        self, 
-        comparison_id: str
-    ) -> List[EvaluationResult]:
-        """Get all evaluation results for a comparison."""
-        results = []
-        
-        # Scan results directory
-        for filename in os.listdir(self.results_dir):
-            if filename.endswith('.json'):
-                with open(os.path.join(self.results_dir, filename), 'r') as f:
-                    data = json.load(f)
+    def get_experiment_stats(self) -> Dict[str, Any]:
+        """Get statistics about the created experiment."""
+        with self.db_connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    e.name,
+                    e.status,
+                    e."createdAt",
+                    COUNT(c.id) as comparison_count,
+                    ARRAY_AGG(DISTINCT c."modelA") || ARRAY_AGG(DISTINCT c."modelB") as models,
+                    ARRAY_AGG(DISTINCT c."scenarioId") as scenarios
+                FROM "Experiment" e
+                LEFT JOIN "Comparison" c ON e.id = c."experimentId"
+                WHERE e.id = %s
+                GROUP BY e.id, e.name, e.status, e."createdAt"
+            """, (self.experiment_id,))
+            
+            result = cursor.fetchone()
+            
+            if result:
+                # Clean up duplicates in models array
+                all_models = result['models'] or []
+                unique_models = list(set([m for m in all_models if m is not None]))
                 
-                if data["comparison_id"] == comparison_id:
-                    data["submitted_at"] = datetime.fromisoformat(data["submitted_at"])
-                    results.append(EvaluationResult(**data))
-        
-        return results
+                return {
+                    'experiment_id': self.experiment_id,
+                    'name': result['name'],
+                    'status': result['status'],
+                    'created_at': result['createdAt'],
+                    'comparison_count': result['comparison_count'],
+                    'unique_models': unique_models,
+                    'scenarios': result['scenarios'] or []
+                }
+            return {}
     
-    def _save_video(self, frames: np.ndarray, output_path: str) -> None:
-        """Save video frames to file."""
-        import imageio
-        
-        # Ensure frames are in the right format
-        if frames.dtype != np.uint8:
-            frames = (frames * 255).astype(np.uint8)
-        
-        # Save as video
-        imageio.mimwrite(output_path, frames, fps=16, codec='libx264')
+    def close(self):
+        """Close database connection."""
+        if self.db_connection:
+            self.db_connection.close()
     
-    def _save_comparison(self, comparison: VideoComparison) -> None:
-        """Save comparison metadata."""
-        comparison_path = os.path.join(
-            self.comparisons_dir,
-            f"{comparison.comparison_id}.json"
-        )
-        
-        with open(comparison_path, 'w') as f:
-            json.dump(comparison.to_dict(), f, indent=2)
+    def __enter__(self):
+        return self
     
-    def export_study_data(self, study_name: str) -> str:
-        """Export all data for a study in a format suitable for analysis."""
-        export_dir = os.path.join(self.output_dir, "exports", study_name)
-        os.makedirs(export_dir, exist_ok=True)
-        
-        # Collect all comparisons and results
-        all_comparisons = []
-        all_results = []
-        
-        for filename in os.listdir(self.comparisons_dir):
-            if filename.endswith('.json'):
-                with open(os.path.join(self.comparisons_dir, filename), 'r') as f:
-                    all_comparisons.append(json.load(f))
-        
-        for filename in os.listdir(self.results_dir):
-            if filename.endswith('.json'):
-                with open(os.path.join(self.results_dir, filename), 'r') as f:
-                    all_results.append(json.load(f))
-        
-        # Save combined data
-        export_data = {
-            "study_name": study_name,
-            "export_date": datetime.now().isoformat(),
-            "comparisons": all_comparisons,
-            "results": all_results
-        }
-        
-        export_path = os.path.join(export_dir, "study_data.json")
-        with open(export_path, 'w') as f:
-            json.dump(export_data, f, indent=2)
-        
-        return export_path
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

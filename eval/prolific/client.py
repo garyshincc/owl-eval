@@ -204,7 +204,7 @@ class ProlificStudyManager:
         """
         
         # Create completion URL with participant ID
-        external_url = f"{self.base_url}/prolific/start?PROLIFIC_PID={{%raw%}}{{{{PROLIFIC_PID}}}}{%endraw%}}&SESSION_ID={{%raw%}}{{{{SESSION_ID}}}}{%endraw%}}&STUDY_ID={{%raw%}}{{{{STUDY_ID}}}}{%endraw%}}"
+        external_url = f"{self.base_url}/prolific/start?PROLIFIC_PID={{%raw%}}{{{{PROLIFIC_PID}}}}{{%endraw%}}&SESSION_ID={{%raw%}}{{{{SESSION_ID}}}}{{%endraw%}}&STUDY_ID={{%raw%}}{{{{STUDY_ID}}}}{{%endraw%}}"
         
         # Create the study
         study = self.client.create_study(
@@ -217,7 +217,7 @@ class ProlificStudyManager:
             eligibility_requirements=eligibility_requirements,
             completion_code="WORLDMODEL2025",  # Participants enter this on completion
             device_compatibility=["desktop"],  # Desktop only for video viewing
-            peripheral_requirements=["audio", "download_speed_5"]  # Need audio and good internet
+            peripheral_requirements=["audio"]  # Need audio and good internet
         )
         
         logger.info(f"Created study: {study['id']}")
