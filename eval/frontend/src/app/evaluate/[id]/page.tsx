@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Loader2, 
-  Play, 
-  Pause, 
-  Volume2, 
-  VolumeX, 
-  RotateCcw, 
-  SkipBack, 
+import {
+  Loader2,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  RotateCcw,
+  SkipBack,
   SkipForward,
   Maximize2,
   Minimize2,
@@ -50,7 +50,7 @@ interface DimensionInfo {
 
 const dimensions = [
   'overall_quality',
-  'controllability', 
+  'controllability',
   'visual_quality',
   'temporal_consistency'
 ]
@@ -102,7 +102,7 @@ export default function EvaluatePage() {
   const params = useParams()
   const router = useRouter()
   const { toast } = useToast()
-  
+
   const [comparison, setComparison] = useState<Comparison | null>(null)
   const [actualComparisonId, setActualComparisonId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -112,7 +112,7 @@ export default function EvaluatePage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [saving, setSaving] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
+
   // Generate or retrieve session ID for anonymous users
   const getSessionId = useCallback(() => {
     let sessionId = sessionStorage.getItem('anon_session_id')
@@ -122,7 +122,7 @@ export default function EvaluatePage() {
     }
     return sessionId
   }, [])
-  
+
   const videoARef = useRef<HTMLVideoElement>(null)
   const videoBRef = useRef<HTMLVideoElement>(null)
   const [playingA, setPlayingA] = useState(false)
@@ -143,14 +143,14 @@ export default function EvaluatePage() {
     try {
       // First try to fetch as comparison ID
       let response = await fetch(`/api/comparisons/${params.id}`)
-      
+
       if (!response.ok && response.status === 404) {
         // If not found, try as experiment slug to get a random comparison
         const experimentsResponse = await fetch(`/api/experiments`)
         if (experimentsResponse.ok) {
           const experiments = await experimentsResponse.json()
           const experiment = experiments.find((exp: any) => exp.slug === params.id)
-          
+
           if (experiment && experiment._count.comparisons > 0) {
             // Get comparisons for this experiment
             const comparisonsResponse = await fetch(`/api/comparisons?experimentId=${experiment.id}`)
@@ -168,25 +168,25 @@ export default function EvaluatePage() {
           }
         }
       }
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch comparison')
       }
-      
+
       const data = await response.json()
       setComparison(data)
-      
+
       // Set the actual comparison ID if not already set
       const comparisonId = actualComparisonId || data.comparison_id
       if (!actualComparisonId) {
         setActualComparisonId(comparisonId)
       }
-      
+
       // Load any existing draft
       const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
       const sessionId = getSessionId()
       const draftResponse = await fetch(`/api/evaluations/draft?comparisonId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
-      
+
       if (draftResponse.ok) {
         const draftData = await draftResponse.json()
         if (draftData.draft) {
@@ -200,7 +200,7 @@ export default function EvaluatePage() {
             router.push('/thank-you')
             return
           }
-          
+
           if (draftData.draft.status === 'draft') {
             // Check if we have the full responses saved in clientMetadata
             const savedResponses = draftData.draft.clientMetadata?.responses
@@ -222,7 +222,7 @@ export default function EvaluatePage() {
               setResponses(uiResponses)
             }
             setLastSaved(new Date(draftData.draft.lastSavedAt))
-            
+
             toast({
               title: 'Draft Loaded',
               description: 'Your previous progress has been restored',
@@ -240,19 +240,19 @@ export default function EvaluatePage() {
     } finally {
       setLoading(false)
     }
-  }, [params.id, toast, getSessionId])
+  }, [params.id, toast, getSessionId, actualComparisonId, router])
 
   // Auto-save functionality
   const saveDraft = useCallback(async () => {
     if (!comparison || Object.keys(responses).length === 0 || submitting) {
-      console.log('Skipping save: no comparison, responses, or currently submitting', { 
-        comparison: !!comparison, 
+      console.log('Skipping save: no comparison, responses, or currently submitting', {
+        comparison: !!comparison,
         responsesCount: Object.keys(responses).length,
         submitting
       })
       return
     }
-    
+
     console.log('Starting draft save...', { responses })
     setSaving(true)
     try {
@@ -260,7 +260,7 @@ export default function EvaluatePage() {
       const experimentId = sessionStorage.getItem('experiment_id')
       const prolificPid = sessionStorage.getItem('prolific_pid')
       const sessionId = getSessionId()
-      
+
       const dimensionScores: Record<string, string> = {}
       Object.entries(responses).forEach(([dimension, value]) => {
         if (value.includes('A')) {
@@ -344,11 +344,11 @@ export default function EvaluatePage() {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
     }
-    
+
     saveTimeoutRef.current = setTimeout(() => {
       saveDraft()
     }, 2000) // Save after 2 seconds of inactivity
-    
+
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
@@ -368,7 +368,7 @@ export default function EvaluatePage() {
         setVideoLoadedA(true)
         setVideoLoadedB(true)
       }, 3000) // 3 seconds should be enough for videos to load
-      
+
       return () => clearTimeout(timer)
     }
   }, [comparison])
@@ -382,16 +382,16 @@ export default function EvaluatePage() {
       console.log('Video A started playing')
       setPlayingA(true)
     }
-    
+
     const handlePauseA = () => {
       console.log('Video A paused')
       setPlayingA(false)
     }
-    
+
     const handleTimeUpdateA = () => {
       setCurrentTimeA(videoA.currentTime)
     }
-    
+
     const handleLoadedMetadataA = () => {
       console.log('Video A metadata loaded, duration:', videoA.duration)
       setDurationA(videoA.duration)
@@ -454,16 +454,16 @@ export default function EvaluatePage() {
       console.log('Video B started playing')
       setPlayingB(true)
     }
-    
+
     const handlePauseB = () => {
       console.log('Video B paused')
       setPlayingB(false)
     }
-    
+
     const handleTimeUpdateB = () => {
       setCurrentTimeB(videoB.currentTime)
     }
-    
+
     const handleLoadedMetadataB = () => {
       console.log('Video B metadata loaded, duration:', videoB.duration)
       setDurationB(videoB.duration)
@@ -517,51 +517,6 @@ export default function EvaluatePage() {
     }
   }, [comparison, playbackSpeed, volumeB])
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in form fields
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return
-      }
-
-      switch (e.key.toLowerCase()) {
-        case ' ':
-        case 'spacebar':
-          e.preventDefault()
-          handlePlayBoth()
-          break
-        case 'arrowleft':
-          e.preventDefault()
-          if (syncMode) {
-            const avgTime = (currentTimeA + currentTimeB) / 2
-            handleSeek('A', Math.max(0, avgTime - 5))
-            handleSeek('B', Math.max(0, avgTime - 5))
-          }
-          break
-        case 'arrowright':
-          e.preventDefault()
-          if (syncMode) {
-            const avgTime = (currentTimeA + currentTimeB) / 2
-            handleSeek('A', Math.min(durationA, avgTime + 5))
-            handleSeek('B', Math.min(durationB, avgTime + 5))
-          }
-          break
-        case 'r':
-          e.preventDefault()
-          handleRestart()
-          break
-        case 's':
-          e.preventDefault()
-          toggleSync()
-          break
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [currentTimeA, currentTimeB, durationA, durationB, syncMode])
-
   // Video control functions
   const handlePlayA = async () => {
     if (videoARef.current) {
@@ -607,41 +562,30 @@ export default function EvaluatePage() {
 
   const handlePlayBoth = async () => {
     if (videoARef.current && videoBRef.current) {
-      const bothPlaying = playingA && playingB
+      const bothPlaying = playingA && playingB;
       if (bothPlaying) {
-        videoARef.current.pause()
-        videoBRef.current.pause()
+        videoARef.current.pause();
+        videoBRef.current.pause();
       } else {
         try {
-          // Sync times before playing
           if (syncMode) {
-            const avgTime = (currentTimeA + currentTimeB) / 2
-            videoARef.current.currentTime = avgTime
-            videoBRef.current.currentTime = avgTime
-            
-            // Wait a small amount for currentTime to be set
-            await new Promise(resolve => setTimeout(resolve, 50))
+            const avgTime = (currentTimeA + currentTimeB) / 2;
+            videoARef.current.currentTime = avgTime;
+            videoBRef.current.currentTime = avgTime;
+            await new Promise(resolve => setTimeout(resolve, 50));
           }
-          
-          // Play both videos
-          const playPromises = [
-            videoARef.current.play(),
-            videoBRef.current.play()
-          ]
-          
-          await Promise.all(playPromises)
+          await Promise.all([videoARef.current.play(), videoBRef.current.play()]);
         } catch (error) {
-          console.error('Error playing videos:', error)
-          // Fallback: try to play them individually
+          console.error('Error playing videos:', error);
           try {
-            await videoARef.current.play()
+            await videoARef.current.play();
           } catch (e) {
-            console.error('Error playing video A:', e)
+            console.error('Error playing video A:', e);
           }
           try {
-            await videoBRef.current.play()
+            await videoBRef.current.play();
           } catch (e) {
-            console.error('Error playing video B:', e)
+            console.error('Error playing video B:', e);
           }
         }
       }
@@ -649,32 +593,28 @@ export default function EvaluatePage() {
   }
 
   const handleSeek = (video: 'A' | 'B', time: number) => {
-    const videoRef = video === 'A' ? videoARef : videoBRef
+    const videoRef = video === 'A' ? videoARef : videoBRef;
     if (videoRef.current) {
-      const clampedTime = Math.max(0, Math.min(time, videoRef.current.duration || 0))
-      videoRef.current.currentTime = clampedTime
-      
-      // Update state immediately for smoother UI
+      const clampedTime = Math.max(0, Math.min(time, videoRef.current.duration || 0));
+      videoRef.current.currentTime = clampedTime;
       if (video === 'A') {
-        setCurrentTimeA(clampedTime)
+        setCurrentTimeA(clampedTime);
       } else {
-        setCurrentTimeB(clampedTime)
+        setCurrentTimeB(clampedTime);
       }
-      
       if (syncMode) {
-        const otherRef = video === 'A' ? videoBRef : videoARef
+        const otherRef = video === 'A' ? videoBRef : videoARef;
         if (otherRef.current) {
-          otherRef.current.currentTime = clampedTime
-          // Update other video's state too
+          otherRef.current.currentTime = clampedTime;
           if (video === 'A') {
-            setCurrentTimeB(clampedTime)
+            setCurrentTimeB(clampedTime);
           } else {
-            setCurrentTimeA(clampedTime)
+            setCurrentTimeA(clampedTime);
           }
         }
       }
     }
-  }
+  };
 
   const handleVolumeChange = (video: 'A' | 'B', volume: number) => {
     const videoRef = video === 'A' ? videoARef : videoBRef
@@ -687,7 +627,7 @@ export default function EvaluatePage() {
 
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed)
-    
+
     // Apply to both videos
     if (videoARef.current) {
       videoARef.current.playbackRate = speed
@@ -753,11 +693,11 @@ export default function EvaluatePage() {
     }
 
     setSubmitting(true)
-    
+
     try {
       const dimensionScores: Record<string, string> = {}
       const detailedRatings: Record<string, string> = {}
-      
+
       Object.entries(responses).forEach(([dimension, value]) => {
         if (value.includes('A')) {
           dimensionScores[dimension] = 'A'
@@ -774,7 +714,7 @@ export default function EvaluatePage() {
       const experimentId = sessionStorage.getItem('experiment_id')
       const prolificPid = sessionStorage.getItem('prolific_pid')
       const sessionId = getSessionId()
-      
+
       const submitResponse = await fetch('/api/submit-evaluation', {
         method: 'POST',
         headers: {
@@ -884,7 +824,7 @@ export default function EvaluatePage() {
           </div>
         </CardHeader>
         <CardContent>
-          
+
           {/* Keyboard Shortcuts */}
           <div className="bg-slate-800/50 border border-slate-600/50 rounded-lg p-3 mb-4">
             <details className="cursor-pointer">
@@ -922,7 +862,7 @@ export default function EvaluatePage() {
                     </>
                   )}
                 </Button>
-                
+
                 <Button
                   onClick={toggleSync}
                   variant={syncMode ? "default" : "outline"}
@@ -1005,7 +945,7 @@ export default function EvaluatePage() {
                   </Button>
                 </div>
               </div>
-              
+
               <div className={`relative bg-black rounded-lg overflow-hidden mx-auto ${getVideoSizeClass()}`}>
                 <div className="relative pt-[56.25%]">
                   <video
@@ -1017,7 +957,7 @@ export default function EvaluatePage() {
                     preload="metadata"
                     crossOrigin="anonymous"
                   />
-                
+
                   {/* Loading indicator */}
                   {!videoLoadedA && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/50">
@@ -1027,7 +967,7 @@ export default function EvaluatePage() {
                       </div>
                     </div>
                   )}
-                
+
                   {/* Video overlay with time */}
                   <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono">
                     {formatTime(currentTimeA)} / {formatTime(durationA)}
@@ -1118,7 +1058,7 @@ export default function EvaluatePage() {
                   </Button>
                 </div>
               </div>
-              
+
               <div className={`relative bg-black rounded-lg overflow-hidden mx-auto ${getVideoSizeClass()}`}>
                 <div className="relative pt-[56.25%]">
                   <video
@@ -1130,7 +1070,7 @@ export default function EvaluatePage() {
                     preload="metadata"
                     crossOrigin="anonymous"
                   />
-                
+
                   {/* Loading indicator */}
                   {!videoLoadedB && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/50">
@@ -1140,7 +1080,7 @@ export default function EvaluatePage() {
                       </div>
                     </div>
                   )}
-                
+
                   {/* Video overlay with time */}
                   <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono">
                     {formatTime(currentTimeB)} / {formatTime(durationB)}
@@ -1229,7 +1169,7 @@ export default function EvaluatePage() {
             <p className="text-sm text-slate-300 leading-relaxed">
               {dimensionInfo[dimension].description}
             </p>
-            
+
             {dimensionInfo[dimension].sub_questions && (
               <div className="bg-slate-800/50 border border-slate-600/50 p-4 rounded-lg">
                 <p className="text-sm font-medium mb-2 text-slate-200">Consider these aspects:</p>
@@ -1247,40 +1187,40 @@ export default function EvaluatePage() {
             >
               <div className="space-y-3">
                 <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem 
-                    value="A_much_better" 
+                  <RadioGroupItem
+                    value="A_much_better"
                     id={`${dimension}_A_much`}
                     className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
                   />
                   <Label htmlFor={`${dimension}_A_much`} className="text-slate-200 font-medium cursor-pointer">Model A is much better</Label>
                 </div>
                 <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem 
-                    value="A_slightly_better" 
+                  <RadioGroupItem
+                    value="A_slightly_better"
                     id={`${dimension}_A_slight`}
                     className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
                   />
                   <Label htmlFor={`${dimension}_A_slight`} className="text-slate-200 font-medium cursor-pointer">Model A is slightly better</Label>
                 </div>
                 <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem 
-                    value="Equal" 
+                  <RadioGroupItem
+                    value="Equal"
                     id={`${dimension}_equal`}
                     className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
                   />
                   <Label htmlFor={`${dimension}_equal`} className="text-slate-200 font-medium cursor-pointer">Both are equally good</Label>
                 </div>
                 <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem 
-                    value="B_slightly_better" 
+                  <RadioGroupItem
+                    value="B_slightly_better"
                     id={`${dimension}_B_slight`}
                     className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
                   />
                   <Label htmlFor={`${dimension}_B_slight`} className="text-slate-200 font-medium cursor-pointer">Model B is slightly better</Label>
                 </div>
                 <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem 
-                    value="B_much_better" 
+                  <RadioGroupItem
+                    value="B_much_better"
                     id={`${dimension}_B_much`}
                     className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
                   />
