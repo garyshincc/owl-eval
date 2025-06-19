@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 
-from ..evaluation.ab_testing import ABTestingFramework, VideoComparison, EvaluationResult
-from ..evaluation.criteria import ComparisonResult
+from evaluation.ab_testing import ABTestingFramework, VideoComparison, EvaluationResult
+from evaluation.criteria import ComparisonResult
 
 
 class EvaluationAnalyzer:
@@ -52,7 +52,7 @@ class EvaluationAnalyzer:
             if filename.endswith('.json'):
                 with open(os.path.join(self.framework.results_dir, filename), 'r') as f:
                     data = json.load(f)
-                    data['submitted_at'] = datetime.fromisoformat(data['submitted_at'])
+                    data['created_at'] = datetime.fromisoformat(data['created_at'])
                     results.append(EvaluationResult(**data))
         
         return results
@@ -226,7 +226,7 @@ class EvaluationAnalyzer:
         for result in self.results:
             evaluator = result.evaluator_id
             evaluator_stats[evaluator]['num_evaluations'] += 1
-            evaluator_stats[evaluator]['total_time'] += result.completion_time_seconds
+            evaluator_stats[evaluator]['total_time'] += result.evaluation_time_seconds
             
             for dimension, choice in result.dimension_scores.items():
                 evaluator_stats[evaluator]['dimension_variance'][choice] += 1
@@ -235,8 +235,8 @@ class EvaluationAnalyzer:
         quality_metrics = {
             'total_evaluations': len(self.results),
             'unique_evaluators': len(evaluator_stats),
-            'avg_time_per_evaluation': np.mean([r.completion_time_seconds for r in self.results]),
-            'median_time_per_evaluation': np.median([r.completion_time_seconds for r in self.results]),
+            'avg_time_per_evaluation': np.mean([r.evaluation_time_seconds for r in self.results]),
+            'median_time_per_evaluation': np.median([r.evaluation_time_seconds for r in self.results]),
             'evaluator_details': []
         }
         

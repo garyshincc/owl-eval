@@ -117,7 +117,7 @@ export default function EvaluatePage() {
   const getSessionId = useCallback(() => {
     let sessionId = sessionStorage.getItem('anon_session_id')
     if (!sessionId) {
-      sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
       sessionStorage.setItem('anon_session_id', sessionId)
     }
     return sessionId
@@ -136,6 +136,8 @@ export default function EvaluatePage() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [videoSize, setVideoSize] = useState<'small' | 'medium' | 'large'>('medium')
   const [syncMode, setSyncMode] = useState(true)
+  const [videoLoadedA, setVideoLoadedA] = useState(false)
+  const [videoLoadedB, setVideoLoadedB] = useState(false)
 
   const fetchComparison = useCallback(async () => {
     try {
@@ -358,53 +360,162 @@ export default function EvaluatePage() {
     fetchComparison()
   }, [fetchComparison])
 
-  // Set up video event listeners
+  // Force loading state to false after videos should have loaded
+  useEffect(() => {
+    if (comparison) {
+      const timer = setTimeout(() => {
+        console.log('Forcing video loaded states to true')
+        setVideoLoadedA(true)
+        setVideoLoadedB(true)
+      }, 3000) // 3 seconds should be enough for videos to load
+      
+      return () => clearTimeout(timer)
+    }
+  }, [comparison])
+
+  // Set up video event listeners for Video A
   useEffect(() => {
     const videoA = videoARef.current
-    const videoB = videoBRef.current
+    if (!videoA || !comparison) return
 
-    if (videoA) {
-      const handlePlayA = () => setPlayingA(true)
-      const handlePauseA = () => setPlayingA(false)
-      const handleTimeUpdateA = () => setCurrentTimeA(videoA.currentTime)
-      const handleLoadedMetadataA = () => setDurationA(videoA.duration)
-
-      videoA.addEventListener('play', handlePlayA)
-      videoA.addEventListener('pause', handlePauseA)
-      videoA.addEventListener('timeupdate', handleTimeUpdateA)
-      videoA.addEventListener('loadedmetadata', handleLoadedMetadataA)
-
-      return () => {
-        videoA.removeEventListener('play', handlePlayA)
-        videoA.removeEventListener('pause', handlePauseA)
-        videoA.removeEventListener('timeupdate', handleTimeUpdateA)
-        videoA.removeEventListener('loadedmetadata', handleLoadedMetadataA)
-      }
+    const handlePlayA = () => {
+      console.log('Video A started playing')
+      setPlayingA(true)
     }
-  }, [comparison])
+    
+    const handlePauseA = () => {
+      console.log('Video A paused')
+      setPlayingA(false)
+    }
+    
+    const handleTimeUpdateA = () => {
+      setCurrentTimeA(videoA.currentTime)
+    }
+    
+    const handleLoadedMetadataA = () => {
+      console.log('Video A metadata loaded, duration:', videoA.duration)
+      setDurationA(videoA.duration)
+      // Set initial playback speed
+      videoA.playbackRate = playbackSpeed
+      videoA.volume = volumeA
+    }
 
+    const handleLoadedDataA = () => {
+      console.log('Video A data loaded')
+      setVideoLoadedA(true)
+      // Ensure playback settings are applied
+      videoA.playbackRate = playbackSpeed
+      videoA.volume = volumeA
+    }
+
+    const handleCanPlayA = () => {
+      console.log('Video A can play')
+      setVideoLoadedA(true)
+    }
+
+    const handleErrorA = (e: Event) => {
+      console.error('Video A error:', e)
+    }
+
+    // Add all event listeners
+    videoA.addEventListener('play', handlePlayA)
+    videoA.addEventListener('pause', handlePauseA)
+    videoA.addEventListener('timeupdate', handleTimeUpdateA)
+    videoA.addEventListener('loadedmetadata', handleLoadedMetadataA)
+    videoA.addEventListener('loadeddata', handleLoadedDataA)
+    videoA.addEventListener('canplay', handleCanPlayA)
+    videoA.addEventListener('error', handleErrorA)
+
+    // Apply initial settings if video is already loaded
+    if (videoA.readyState >= 1) {
+      setDurationA(videoA.duration)
+      setVideoLoadedA(true)
+      videoA.playbackRate = playbackSpeed
+      videoA.volume = volumeA
+    }
+
+    return () => {
+      videoA.removeEventListener('play', handlePlayA)
+      videoA.removeEventListener('pause', handlePauseA)
+      videoA.removeEventListener('timeupdate', handleTimeUpdateA)
+      videoA.removeEventListener('loadedmetadata', handleLoadedMetadataA)
+      videoA.removeEventListener('loadeddata', handleLoadedDataA)
+      videoA.removeEventListener('canplay', handleCanPlayA)
+      videoA.removeEventListener('error', handleErrorA)
+    }
+  }, [comparison, playbackSpeed, volumeA])
+
+  // Set up video event listeners for Video B
   useEffect(() => {
     const videoB = videoBRef.current
+    if (!videoB || !comparison) return
 
-    if (videoB) {
-      const handlePlayB = () => setPlayingB(true)
-      const handlePauseB = () => setPlayingB(false)
-      const handleTimeUpdateB = () => setCurrentTimeB(videoB.currentTime)
-      const handleLoadedMetadataB = () => setDurationB(videoB.duration)
-
-      videoB.addEventListener('play', handlePlayB)
-      videoB.addEventListener('pause', handlePauseB)
-      videoB.addEventListener('timeupdate', handleTimeUpdateB)
-      videoB.addEventListener('loadedmetadata', handleLoadedMetadataB)
-
-      return () => {
-        videoB.removeEventListener('play', handlePlayB)
-        videoB.removeEventListener('pause', handlePauseB)
-        videoB.removeEventListener('timeupdate', handleTimeUpdateB)
-        videoB.removeEventListener('loadedmetadata', handleLoadedMetadataB)
-      }
+    const handlePlayB = () => {
+      console.log('Video B started playing')
+      setPlayingB(true)
     }
-  }, [comparison])
+    
+    const handlePauseB = () => {
+      console.log('Video B paused')
+      setPlayingB(false)
+    }
+    
+    const handleTimeUpdateB = () => {
+      setCurrentTimeB(videoB.currentTime)
+    }
+    
+    const handleLoadedMetadataB = () => {
+      console.log('Video B metadata loaded, duration:', videoB.duration)
+      setDurationB(videoB.duration)
+      // Set initial playback speed
+      videoB.playbackRate = playbackSpeed
+      videoB.volume = volumeB
+    }
+
+    const handleLoadedDataB = () => {
+      console.log('Video B data loaded')
+      setVideoLoadedB(true)
+      // Ensure playback settings are applied
+      videoB.playbackRate = playbackSpeed
+      videoB.volume = volumeB
+    }
+
+    const handleCanPlayB = () => {
+      console.log('Video B can play')
+      setVideoLoadedB(true)
+    }
+
+    const handleErrorB = (e: Event) => {
+      console.error('Video B error:', e)
+    }
+
+    // Add all event listeners
+    videoB.addEventListener('play', handlePlayB)
+    videoB.addEventListener('pause', handlePauseB)
+    videoB.addEventListener('timeupdate', handleTimeUpdateB)
+    videoB.addEventListener('loadedmetadata', handleLoadedMetadataB)
+    videoB.addEventListener('loadeddata', handleLoadedDataB)
+    videoB.addEventListener('canplay', handleCanPlayB)
+    videoB.addEventListener('error', handleErrorB)
+
+    // Apply initial settings if video is already loaded
+    if (videoB.readyState >= 1) {
+      setDurationB(videoB.duration)
+      setVideoLoadedB(true)
+      videoB.playbackRate = playbackSpeed
+      videoB.volume = volumeB
+    }
+
+    return () => {
+      videoB.removeEventListener('play', handlePlayB)
+      videoB.removeEventListener('pause', handlePauseB)
+      videoB.removeEventListener('timeupdate', handleTimeUpdateB)
+      videoB.removeEventListener('loadedmetadata', handleLoadedMetadataB)
+      videoB.removeEventListener('loadeddata', handleLoadedDataB)
+      videoB.removeEventListener('canplay', handleCanPlayB)
+      videoB.removeEventListener('error', handleErrorB)
+    }
+  }, [comparison, playbackSpeed, volumeB])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -452,45 +563,87 @@ export default function EvaluatePage() {
   }, [currentTimeA, currentTimeB, durationA, durationB, syncMode])
 
   // Video control functions
-  const handlePlayA = () => {
+  const handlePlayA = async () => {
     if (videoARef.current) {
       if (playingA) {
         videoARef.current.pause()
       } else {
-        videoARef.current.play()
-        if (syncMode && videoBRef.current && !playingB) {
-          videoBRef.current.play()
+        try {
+          await videoARef.current.play()
+          if (syncMode && videoBRef.current && !playingB) {
+            try {
+              await videoBRef.current.play()
+            } catch (e) {
+              console.error('Error playing video B in sync:', e)
+            }
+          }
+        } catch (error) {
+          console.error('Error playing video A:', error)
         }
       }
     }
   }
 
-  const handlePlayB = () => {
+  const handlePlayB = async () => {
     if (videoBRef.current) {
       if (playingB) {
         videoBRef.current.pause()
       } else {
-        videoBRef.current.play()
-        if (syncMode && videoARef.current && !playingA) {
-          videoARef.current.play()
+        try {
+          await videoBRef.current.play()
+          if (syncMode && videoARef.current && !playingA) {
+            try {
+              await videoARef.current.play()
+            } catch (e) {
+              console.error('Error playing video A in sync:', e)
+            }
+          }
+        } catch (error) {
+          console.error('Error playing video B:', error)
         }
       }
     }
   }
 
-  const handlePlayBoth = () => {
+  const handlePlayBoth = async () => {
     if (videoARef.current && videoBRef.current) {
       const bothPlaying = playingA && playingB
       if (bothPlaying) {
         videoARef.current.pause()
         videoBRef.current.pause()
       } else {
-        // Sync times before playing
-        const avgTime = (currentTimeA + currentTimeB) / 2
-        videoARef.current.currentTime = avgTime
-        videoBRef.current.currentTime = avgTime
-        videoARef.current.play()
-        videoBRef.current.play()
+        try {
+          // Sync times before playing
+          if (syncMode) {
+            const avgTime = (currentTimeA + currentTimeB) / 2
+            videoARef.current.currentTime = avgTime
+            videoBRef.current.currentTime = avgTime
+            
+            // Wait a small amount for currentTime to be set
+            await new Promise(resolve => setTimeout(resolve, 50))
+          }
+          
+          // Play both videos
+          const playPromises = [
+            videoARef.current.play(),
+            videoBRef.current.play()
+          ]
+          
+          await Promise.all(playPromises)
+        } catch (error) {
+          console.error('Error playing videos:', error)
+          // Fallback: try to play them individually
+          try {
+            await videoARef.current.play()
+          } catch (e) {
+            console.error('Error playing video A:', e)
+          }
+          try {
+            await videoBRef.current.play()
+          } catch (e) {
+            console.error('Error playing video B:', e)
+          }
+        }
       }
     }
   }
@@ -498,11 +651,26 @@ export default function EvaluatePage() {
   const handleSeek = (video: 'A' | 'B', time: number) => {
     const videoRef = video === 'A' ? videoARef : videoBRef
     if (videoRef.current) {
-      videoRef.current.currentTime = time
+      const clampedTime = Math.max(0, Math.min(time, videoRef.current.duration || 0))
+      videoRef.current.currentTime = clampedTime
+      
+      // Update state immediately for smoother UI
+      if (video === 'A') {
+        setCurrentTimeA(clampedTime)
+      } else {
+        setCurrentTimeB(clampedTime)
+      }
+      
       if (syncMode) {
         const otherRef = video === 'A' ? videoBRef : videoARef
         if (otherRef.current) {
-          otherRef.current.currentTime = time
+          otherRef.current.currentTime = clampedTime
+          // Update other video's state too
+          if (video === 'A') {
+            setCurrentTimeB(clampedTime)
+          } else {
+            setCurrentTimeA(clampedTime)
+          }
         }
       }
     }
@@ -519,17 +687,44 @@ export default function EvaluatePage() {
 
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed)
-    if (videoARef.current) videoARef.current.playbackRate = speed
-    if (videoBRef.current) videoBRef.current.playbackRate = speed
+    
+    // Apply to both videos
+    if (videoARef.current) {
+      videoARef.current.playbackRate = speed
+      console.log(`Set Video A playback rate to ${speed}`)
+    }
+    if (videoBRef.current) {
+      videoBRef.current.playbackRate = speed
+      console.log(`Set Video B playback rate to ${speed}`)
+    }
   }
 
   const handleRestart = () => {
-    if (videoARef.current) videoARef.current.currentTime = 0
-    if (videoBRef.current) videoBRef.current.currentTime = 0
+    if (videoARef.current) {
+      videoARef.current.currentTime = 0
+      setCurrentTimeA(0)
+    }
+    if (videoBRef.current) {
+      videoBRef.current.currentTime = 0
+      setCurrentTimeB(0)
+    }
+    console.log('Videos restarted')
   }
 
   const toggleSync = () => {
     setSyncMode(!syncMode)
+  }
+
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds)) return '0:00'
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const getProgress = (current: number, duration: number) => {
+    if (!duration || duration === 0) return 0
+    return Math.round((current / duration) * 100)
   }
 
   const getVideoSizeClass = () => {
@@ -819,11 +1014,23 @@ export default function EvaluatePage() {
                     className="absolute inset-0 w-full h-full object-contain"
                     loop
                     playsInline
+                    preload="metadata"
+                    crossOrigin="anonymous"
                   />
                 
+                  {/* Loading indicator */}
+                  {!videoLoadedA && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                      <div className="flex items-center gap-2 text-white">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                        <span className="text-sm">Loading Video A...</span>
+                      </div>
+                    </div>
+                  )}
+                
                   {/* Video overlay with time */}
-                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
-                    {Math.floor(currentTimeA)}s / {Math.floor(durationA)}s
+                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono">
+                    {formatTime(currentTimeA)} / {formatTime(durationA)}
                   </div>
                 </div>
               </div>
@@ -838,7 +1045,7 @@ export default function EvaluatePage() {
                       {syncMode && (
                         <span className="text-cyan-400 font-medium">🔗 SYNC</span>
                       )}
-                      <span>{Math.round((currentTimeA / durationA) * 100) || 0}%</span>
+                      <span>{getProgress(currentTimeA, durationA)}%</span>
                     </span>
                   </div>
                   <input
@@ -920,11 +1127,23 @@ export default function EvaluatePage() {
                     className="absolute inset-0 w-full h-full object-contain"
                     loop
                     playsInline
+                    preload="metadata"
+                    crossOrigin="anonymous"
                   />
                 
+                  {/* Loading indicator */}
+                  {!videoLoadedB && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                      <div className="flex items-center gap-2 text-white">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                        <span className="text-sm">Loading Video B...</span>
+                      </div>
+                    </div>
+                  )}
+                
                   {/* Video overlay with time */}
-                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
-                    {Math.floor(currentTimeB)}s / {Math.floor(durationB)}s
+                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono">
+                    {formatTime(currentTimeB)} / {formatTime(durationB)}
                   </div>
                 </div>
               </div>
@@ -939,7 +1158,7 @@ export default function EvaluatePage() {
                       {syncMode && (
                         <span className="text-green-400 font-medium">🔗 SYNC</span>
                       )}
-                      <span>{Math.round((currentTimeB / durationB) * 100) || 0}%</span>
+                      <span>{getProgress(currentTimeB, durationB)}%</span>
                     </span>
                   </div>
                   <input
