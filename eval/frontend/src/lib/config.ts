@@ -1,5 +1,5 @@
 // Import centralized configuration
-import { getConfig as getCentralizedConfig } from '../../../config'
+import { getConfig as getCentralizedConfig } from '../../../../config'
 
 interface EvaluationConfig {
   outputDir: string

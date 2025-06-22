@@ -602,7 +602,7 @@ export function CreateExperimentWizard({
             )}
           </Button>
           
-          {currentStep < STEPS.length - 1 ? (
+          {currentStep < getSteps(experiment.evaluationMode).length - 1 ? (
             <Button 
               onClick={nextStep}
               disabled={!canProceed()}

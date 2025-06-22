@@ -22,6 +22,7 @@ import {
   AlertCircle,
   Filter
 } from 'lucide-react'
+import { getOverallProgress } from '@/lib/utils/progress'
 
 interface EvaluationStats {
   total_comparisons: number
@@ -82,9 +83,9 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
   const completedExperiments = filteredExperiments.filter(exp => exp.status === 'completed').length
   const totalParticipants = filteredExperiments.reduce((sum, exp) => sum + exp._count.participants, 0)
   
-  const completionRate = stats?.total_comparisons 
-    ? Math.round((stats.total_evaluations / (stats.total_comparisons * stats.target_evaluations_per_comparison)) * 100)
-    : 0
+  // Use the new progress calculation that respects individual experiment configs
+  const overallProgress = getOverallProgress(filteredExperiments)
+  const completionRate = Math.round(overallProgress.progressPercentage)
 
   return (
     <div className="space-y-6">
@@ -148,7 +149,7 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold text-foreground">{stats?.total_evaluations || 0}</p>
+              <p className="text-2xl font-bold text-foreground">{overallProgress.totalEvaluations}</p>
               <Badge variant="secondary" className="text-xs bg-secondary/20 text-secondary">
                 {completionRate}% complete
               </Badge>
@@ -182,9 +183,9 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold text-foreground">{stats?.total_comparisons || 0}</p>
+              <p className="text-2xl font-bold text-foreground">{filteredExperiments.reduce((sum, exp) => sum + exp._count.comparisons, 0)}</p>
               <Badge variant="secondary" className="text-xs">
-                {stats?.target_evaluations_per_comparison || 5} target each
+                {Math.round(overallProgress.totalTargetEvaluations / (filteredExperiments.reduce((sum, exp) => sum + exp._count.comparisons, 0) || 1))} avg target
               </Badge>
             </div>
           </CardContent>
@@ -207,7 +208,7 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Evaluations Completed</span>
-                <span className="font-medium">{stats?.total_evaluations || 0} / {(stats?.total_comparisons || 0) * (stats?.target_evaluations_per_comparison || 5)}</span>
+                <span className="font-medium">{overallProgress.totalEvaluations} / {overallProgress.totalTargetEvaluations}</span>
               </div>
               <Progress value={completionRate} className="h-3" />
               <p className="text-xs text-muted-foreground">
@@ -233,7 +234,7 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
                           <div className="w-16 bg-muted rounded-full h-2">
                             <div 
                               className="bg-primary h-2 rounded-full" 
-                              style={{ width: `${(count / (stats.total_evaluations || 1)) * 100}%` }}
+                              style={{ width: `${(count / (overallProgress.totalEvaluations || 1)) * 100}%` }}
                             />
                           </div>
                         </div>

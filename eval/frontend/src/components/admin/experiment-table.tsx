@@ -36,7 +36,8 @@ import {
   Edit,
   Trash2,
   UserPlus,
-  DollarSign
+  DollarSign,
+  RefreshCw
 } from 'lucide-react'
 
 interface Experiment {
@@ -108,8 +109,15 @@ export function ExperimentTable({
 
   const getProgressPercentage = (exp: Experiment) => {
     if (exp._count.comparisons === 0) return 0
-    const targetEvaluations = exp._count.comparisons * 5 // Default target per comparison
+    // Use the actual experiment configuration or fallback to 5
+    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || 5
+    const targetEvaluations = exp._count.comparisons * evaluationsPerComparison
     return Math.min((exp._count.evaluations / targetEvaluations) * 100, 100)
+  }
+
+  const getTargetEvaluations = (exp: Experiment) => {
+    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || 5
+    return exp._count.comparisons * evaluationsPerComparison
   }
 
   const formatDate = (dateString: string) => {
@@ -258,6 +266,54 @@ export function ExperimentTable({
       toast({
         title: 'Error',
         description: 'Failed to unarchive experiment',
+        variant: 'destructive'
+      })
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleSyncProlificData = async (experiment: Experiment) => {
+    if (!experiment.prolificStudyId) {
+      toast({
+        title: 'Error',
+        description: 'This experiment is not linked to a Prolific study',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setActionLoading(experiment.id)
+    try {
+      const response = await fetch('/api/prolific/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ studyId: experiment.prolificStudyId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to sync Prolific data')
+      }
+
+      const result = await response.json()
+
+      toast({
+        title: 'Sync Complete',
+        description: `Synced ${result.syncedParticipants} participants with demographic data`,
+      })
+
+      // Refresh the experiments list to show updated counts
+      if (onRefresh) {
+        onRefresh()
+      }
+    } catch (error: any) {
+      console.error('Error syncing Prolific data:', error)
+      toast({
+        title: 'Sync Failed',
+        description: error.message || 'Failed to sync Prolific data',
         variant: 'destructive'
       })
     } finally {
@@ -441,7 +497,7 @@ export function ExperimentTable({
                         </div>
                         <Progress value={getProgressPercentage(exp)} className="h-2" />
                         <div className="text-xs text-gray-500">
-                          {exp._count.comparisons} comparisons
+                          {exp._count.evaluations}/{getTargetEvaluations(exp)} target
                         </div>
                       </div>
                     </TableCell>
@@ -488,6 +544,15 @@ export function ExperimentTable({
                             >
                               <DollarSign className="h-4 w-4 mr-2" />
                               Launch on Prolific
+                            </DropdownMenuItem>
+                          )}
+                          {exp.prolificStudyId && (
+                            <DropdownMenuItem
+                              onClick={() => handleSyncProlificData(exp)}
+                              disabled={actionLoading === exp.id}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Sync Prolific Data
                             </DropdownMenuItem>
                           )}
                           {exp.status === 'active' ? (

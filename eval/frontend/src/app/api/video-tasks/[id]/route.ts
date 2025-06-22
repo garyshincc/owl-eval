@@ -3,11 +3,12 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const videoTask = await prisma.videoTask.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         experiment: {
           select: {

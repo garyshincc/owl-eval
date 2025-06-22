@@ -13,9 +13,10 @@ import { VideoLibraryManager } from '@/components/admin/video-library-manager'
 import { CLIToolsPanel } from '@/components/admin/cli-tools-panel'
 import { CreateExperimentWizard } from '@/components/admin/create-experiment-wizard'
 import { BulkExperimentWizard } from '@/components/admin/bulk-experiment-wizard'
-import { ModelPerformanceChart } from '@/components/admin/model-performance-chart'
+import { EnhancedAnalyticsDashboard } from '@/components/admin/enhanced-analytics-dashboard'
 import { ProgressTracker } from '@/components/admin/progress-tracker'
 import { ProlificDialog } from '@/components/admin/prolific-dialog'
+import { DemographicsDashboard } from '@/components/admin/demographics-dashboard'
 import { Breadcrumbs } from '@/components/navigation'
 
 interface EvaluationStats {
@@ -28,8 +29,16 @@ interface EvaluationStats {
 interface ModelPerformance {
   model: string
   dimension: string
+  scenario?: string
   win_rate: number
   num_evaluations: number
+  detailed_scores?: {
+    A_much_better: number
+    A_slightly_better: number
+    Equal: number
+    B_slightly_better: number
+    B_much_better: number
+  }
 }
 
 interface Experiment {
@@ -100,6 +109,7 @@ export default function AdminPage() {
   const [prolificDialogOpen, setProlificDialogOpen] = useState(false)
   const [selectedExperimentForProlific, setSelectedExperimentForProlific] = useState<Experiment | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [selectedExperiment, setSelectedExperiment] = useState<string | null>(null)
 
   // Check if Stack Auth is configured (client-side check)
   const isStackAuthConfigured = typeof window !== 'undefined' && 
@@ -148,12 +158,12 @@ export default function AdminPage() {
   }, [selectedGroup, fetchAllData])
   
   useEffect(() => {
-    const dataInterval = setInterval(fetchAllData, 30000) // Refresh every 30 seconds
+    const dataInterval = setInterval(fetchAllData, 60000) // Refresh every 60 seconds
     
     return () => {
       clearInterval(dataInterval)
     }
-  }, [selectedGroup, fetchAllData])
+  }, [fetchAllData])
 
   const fetchVideoLibrary = async () => {
     try {
@@ -447,11 +457,12 @@ export default function AdminPage() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="experiments">Experiments</TabsTrigger>
             <TabsTrigger value="videos">Videos</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="demographics">Demographics</TabsTrigger>
             <TabsTrigger value="tools">CLI Tools</TabsTrigger>
           </TabsList>
           
@@ -515,13 +526,19 @@ export default function AdminPage() {
           </TabsContent>
           
           <TabsContent value="analytics" className="space-y-6">
-            <ModelPerformanceChart 
-              performance={performance}
+            <EnhancedAnalyticsDashboard 
               loading={refreshing}
               selectedGroup={selectedGroup}
               onGroupChange={setSelectedGroup}
               experiments={experiments}
+              onRefresh={fetchAllData}
+              selectedExperiment={selectedExperiment}
+              onExperimentChange={setSelectedExperiment}
             />
+          </TabsContent>
+          
+          <TabsContent value="demographics">
+            <DemographicsDashboard />
           </TabsContent>
           
           <TabsContent value="tools">

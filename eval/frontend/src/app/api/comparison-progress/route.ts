@@ -15,7 +15,6 @@ interface ComparisonProgress {
 
 export async function GET() {
   try {
-    // Get all comparisons with their completed evaluation counts
     const comparisons = await prisma.comparison.findMany({
       include: {
         _count: {
@@ -26,6 +25,11 @@ export async function GET() {
               }
             }
           }
+        },
+        experiment: {
+          select: {
+            config: true
+          }
         }
       },
       orderBy: {
@@ -33,18 +37,36 @@ export async function GET() {
       }
     })
 
-    const targetEvaluations = 5 // Default target per comparison
+    const progressData: ComparisonProgress[] = comparisons.map(comparison => {
+      let targetEvaluations = 0
 
-    const progressData: ComparisonProgress[] = comparisons.map(comparison => ({
-      id: comparison.id,
-      scenarioId: comparison.scenarioId,
-      modelA: comparison.modelA,
-      modelB: comparison.modelB,
-      evaluationCount: comparison._count.evaluations,
-      targetEvaluations,
-      progressPercentage: Math.round((comparison._count.evaluations / targetEvaluations) * 100)
-    }))
-    
+      if (comparison.experiment?.config) {
+        try {
+          const config = typeof comparison.experiment.config === 'string'
+            ? JSON.parse(comparison.experiment.config)
+            : comparison.experiment.config
+
+          if (typeof config.evaluationsPerComparison === 'number') {
+            targetEvaluations = config.evaluationsPerComparison
+          }
+        } catch (e) {
+          console.warn('Invalid JSON in experiment.config for comparison', comparison.id)
+        }
+      }
+
+      return {
+        id: comparison.id,
+        scenarioId: comparison.scenarioId,
+        modelA: comparison.modelA,
+        modelB: comparison.modelB,
+        evaluationCount: comparison._count.evaluations,
+        targetEvaluations,
+        progressPercentage: targetEvaluations > 0
+          ? Math.round((comparison._count.evaluations / targetEvaluations) * 100)
+          : 0
+      }
+    })
+
     return NextResponse.json(progressData)
   } catch (error) {
     console.error('Error fetching comparison progress:', error)

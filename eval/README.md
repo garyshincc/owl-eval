@@ -92,26 +92,38 @@ GET  /api/evaluation-stats         # Get statistics
 GET  /api/model-performance        # Get performance metrics
 ```
 
-### 4. Data Generation (Python Scripts)
+### 4. Experiment Management (Scripts)
 
-Generate test comparisons using the Python CLI:
+Use the management scripts for various operations:
 
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
+# Install dependencies
+npm install
 
-# Generate test comparisons
-python -m scripts.cli test-local --scenarios 10
+# Experiment management
+npx tsx scripts/experiment-cli.ts create --name "My Experiment"
+npx tsx scripts/experiment-cli.ts create-bulk --models "model1,model2" --scenarios "forest,desert"
+npx tsx scripts/experiment-cli.ts launch my-experiment-slug --prolific
 
-# Export test scenarios
-python -m scripts.cli export-scenarios
+# Database management
+npx tsx scripts/db-manage.ts status
+npx tsx scripts/db-manage.ts count
+
+# Video management
+npx tsx scripts/video-manage.ts list --model genie
+npx tsx scripts/video-manage.ts bulk-edit --pattern "*forest*" --set-model genie
+
+# Storage management
+npx tsx scripts/storage-manage.ts list --prefix experiments/
 ```
+
+See [scripts/README.md](./scripts/README.md) for complete command reference.
 
 ## Evaluation Workflow
 
-1. **Generate Comparisons** (using Python scripts)
-   - Create video pairs from different models
-   - Randomize presentation order
+1. **Generate Comparisons** (using scripts)
+   - Create video pairs from different models using `experiment-cli.ts create-bulk`
+   - Assign videos automatically with `experiment-cli.ts assign-videos`
    - Store metadata for analysis
 
 2. **Conduct Evaluations** (via web interface)
@@ -133,11 +145,12 @@ For crowd-sourced evaluations:
 export PROLIFIC_API_TOKEN=your-token
 ```
 
-2. Create a study:
+2. Create and launch a study:
 ```bash
-python scripts/prolific_cli.py create-study \
-  --name "Matrix-Game Study" \
-  --participants 100
+npx tsx scripts/experiment-cli.ts launch my-experiment-slug \
+  --prolific \
+  --prolific-participants 100 \
+  --prolific-title "Matrix-Game Study"
 ```
 
 3. Participants access via special URL with their ID
