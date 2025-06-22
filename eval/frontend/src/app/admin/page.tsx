@@ -4,6 +4,15 @@ import { useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/use-toast'
+import { 
+  showApiError, 
+  showOperationError, 
+  showUploadSuccess, 
+  showDeleteSuccess, 
+  showUpdateSuccess, 
+  showCopySuccess, 
+  showNoSelectionError 
+} from '@/lib/utils/toast-utils'
 import { LogOut, RefreshCw } from 'lucide-react'
 
 // Import new admin components
@@ -142,11 +151,7 @@ export default function AdminPage() {
       setComparisonProgress(progressData || [])
     } catch (error) {
       console.error('Error fetching data:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch data. Please try refreshing.',
-        variant: 'destructive'
-      })
+      showApiError()
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -233,17 +238,10 @@ export default function AdminPage() {
           groups: []
         }])
 
-        toast({
-          title: 'Upload successful',
-          description: `${file.name} uploaded to library`,
-        })
+        showUploadSuccess(file.name)
       } catch (error) {
         console.error('Upload error:', error)
-        toast({
-          title: 'Upload failed',
-          description: `Failed to upload ${file.name}`,
-          variant: 'destructive'
-        })
+        showOperationError('Upload', file.name)
       }
     }
   }
@@ -270,11 +268,7 @@ export default function AdminPage() {
 
   const handleCopySelectedUrls = async () => {
     if (selectedVideos.size === 0) {
-      toast({
-        title: 'No videos selected',
-        description: 'Please select videos to copy URLs',
-        variant: 'destructive'
-      })
+      showNoSelectionError('copy URLs', 'videos')
       return
     }
 
@@ -285,27 +279,16 @@ export default function AdminPage() {
 
     try {
       await navigator.clipboard.writeText(selectedUrls)
-      toast({
-        title: 'Copied',
-        description: `${selectedVideos.size} video URLs copied to clipboard`,
-      })
+      showCopySuccess(selectedVideos.size, 'video URLs')
     } catch (err) {
       console.error('Failed to copy:', err)
-      toast({
-        title: 'Copy failed',
-        description: 'Failed to copy URLs to clipboard',
-        variant: 'destructive'
-      })
+      showOperationError('Copy', 'URLs to clipboard')
     }
   }
 
   const handleDeleteSelectedVideos = async () => {
     if (selectedVideos.size === 0) {
-      toast({
-        title: 'No videos selected',
-        description: 'Please select videos to delete',
-        variant: 'destructive'
-      })
+      showNoSelectionError('delete', 'videos')
       return
     }
 
@@ -329,17 +312,10 @@ export default function AdminPage() {
       setUploadedVideos(prev => prev.filter(video => !selectedVideos.has(video.key)))
       setSelectedVideos(new Set())
 
-      toast({
-        title: 'Videos deleted',
-        description: `${result.deleted} video(s) deleted successfully`,
-      })
+      showDeleteSuccess(result.deleted, 'Video')
     } catch (error) {
       console.error('Delete error:', error)
-      toast({
-        title: 'Delete failed',
-        description: 'Failed to delete selected videos',
-        variant: 'destructive'
-      })
+      showOperationError('Delete', 'selected videos')
     }
   }
 
@@ -378,17 +354,10 @@ export default function AdminPage() {
           : video
       ))
 
-      toast({
-        title: 'Video updated',
-        description: 'Video metadata has been updated successfully',
-      })
+      showUpdateSuccess('Video metadata')
     } catch (error) {
       console.error('Update video error:', error)
-      toast({
-        title: 'Update failed',
-        description: 'Failed to update video metadata',
-        variant: 'destructive'
-      })
+      showOperationError('Update', 'video metadata')
     }
   }
 

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScenarioSelector } from '@/components/scenario-selector'
 import { toast } from '@/components/ui/use-toast'
+import { showCreateSuccess, showOperationError } from '@/lib/utils/toast-utils'
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -202,10 +203,7 @@ export function CreateExperimentWizard({
 
       const result = await response.json()
       
-      toast({
-        title: 'Experiment created',
-        description: `Experiment "${experiment.name}" created successfully`,
-      })
+      showCreateSuccess('Experiment', experiment.name)
 
       // Reset form and close dialog
       setExperiment({
@@ -226,11 +224,7 @@ export function CreateExperimentWizard({
       
     } catch (error) {
       console.error('Create experiment error:', error)
-      toast({
-        title: 'Creation failed',
-        description: 'Failed to create experiment',
-        variant: 'destructive'
-      })
+      showOperationError('Create', 'experiment')
     } finally {
       setIsCreating(false)
     }

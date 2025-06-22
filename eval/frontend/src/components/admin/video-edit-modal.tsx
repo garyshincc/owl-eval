@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScenarioSelector } from '@/components/scenario-selector'
 import { toast } from '@/components/ui/use-toast'
+import { showUpdateSuccess, showOperationError } from '@/lib/utils/toast-utils'
 import { 
   X, 
   Plus,
@@ -112,18 +113,11 @@ export function VideoEditModal({
     setSaving(true)
     try {
       await onSave(video.id, formData)
-      toast({
-        title: 'Video updated',
-        description: 'Video metadata has been saved successfully',
-      })
+      showUpdateSuccess('Video metadata')
       onOpenChange(false)
     } catch (error) {
       console.error('Save error:', error)
-      toast({
-        title: 'Save failed',
-        description: 'Failed to update video metadata',
-        variant: 'destructive'
-      })
+      showOperationError('Save', 'video metadata')
     } finally {
       setSaving(false)
     }
