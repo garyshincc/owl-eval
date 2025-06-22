@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
+    "build_vercel": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
@@ -18,7 +19,7 @@
     "db:migrate": "prisma migrate dev"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.817.0",
+    "@aws-sdk/client-s3": "^3.832.0",
     "@aws-sdk/s3-request-presigner": "^3.817.0",
     "@prisma/client": "^6.8.2",
     "@radix-ui/react-dialog": "^1.1.14",

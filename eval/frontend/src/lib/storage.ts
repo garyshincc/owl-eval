@@ -27,10 +27,10 @@ export async function uploadVideoToTigris(
   })
 
   await tigrisClient.send(command)
-  
+
   // Return public URL - make sure to use the correct format for Tigris
-  const endpoint = process.env.AWS_ENDPOINT_URL_S3?.replace('https://', '') || 'fly.storage.tigris.dev'
-  return `https://${endpoint}/${BUCKET_NAME}/${key}`
+  const endpoint = `https://${BUCKET_NAME}.fly.storage.tigris.dev`
+  return `${endpoint}/${key}`
 }
 
 export async function getSignedVideoUrl(key: string, expiresIn = 3600): Promise<string> {

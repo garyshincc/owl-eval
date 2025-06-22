@@ -34,6 +34,21 @@ export async function GET(
     // Find scenario metadata
     const scenario = PREDEFINED_SCENARIOS.find(s => s.id === comparison.scenarioId)
     
+    // Convert Tigris URLs to local proxy URLs
+    const convertToProxyUrl = (tigrisUrl: string) => {
+      if (tigrisUrl.includes('t3.storage.dev') || tigrisUrl.includes('fly.storage.tigris.dev')) {
+        // Extract the path after the bucket name
+        const bucketName = process.env.TIGRIS_BUCKET_NAME || 'gary-owl-eval'
+        const urlParts = tigrisUrl.split(`/${bucketName}/`)
+        if (urlParts.length > 1) {
+          const path = urlParts[1]
+          return `/api/video/${path}`
+        }
+      }
+      // Return original URL if not a Tigris URL
+      return tigrisUrl
+    }
+
     // Format the response to match the expected structure
     const formattedComparison = {
       comparison_id: comparison.id,
@@ -45,8 +60,8 @@ export async function GET(
         name: comparison.scenarioId,
         description: `Custom scenario: ${comparison.scenarioId}`
       }),
-      model_a_video_path: comparison.videoAPath,
-      model_b_video_path: comparison.videoBPath,
+      model_a_video_path: convertToProxyUrl(comparison.videoAPath),
+      model_b_video_path: convertToProxyUrl(comparison.videoBPath),
       randomized_labels: {
         A: comparison.modelA,
         B: comparison.modelB
