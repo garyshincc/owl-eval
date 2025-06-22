@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import * as dotenv from 'dotenv';
 import { requireAuth, clearAuth } from './auth';
 import { prisma } from './prisma-client';
+import { prolificService } from '../frontend/src/lib/services/prolific';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../frontend/.env.local') });
@@ -138,11 +139,8 @@ program
       if (experiment.group) {
         console.log(chalk.white('Group:'), chalk.yellow(experiment.group));
       }
-      
-      const evaluationUrl = experiment.evaluationMode === 'single_video' 
-        ? `https://yourdomain.com/evaluate-video/${experiment.slug}`
-        : `https://yourdomain.com/evaluate/${experiment.slug}`;
-      console.log(chalk.white('\nEvaluation URL:'), chalk.blue.underline(evaluationUrl));
+      console.log(chalk.white('\nEvaluation URL:'), 
+        chalk.blue.underline(`localhost:3000/evaluate/${experiment.slug}`));
       
       console.log(chalk.gray('\nNext steps:'));
       console.log(chalk.gray('1. Upload videos using: experiment-cli upload-videos --dir <directory>'));
@@ -1030,6 +1028,515 @@ program
         
       } catch (error) {
         console.error(chalk.red('Error assigning videos:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+// Prolific Commands
+program
+  .command('prolific:create')
+  .description('Create a Prolific study for an experiment')
+  .option('-e, --experiment <slug>', 'Experiment slug')
+  .option('-t, --title <title>', 'Study title')
+  .option('-d, --description <description>', 'Study description')
+  .option('-r, --reward <amount>', 'Reward amount in USD', '8.00')
+  .option('-p, --participants <count>', 'Number of participants', '50')
+  .action(async (options) => {
+    await requireAuth('create Prolific studies', async () => {
+      try {
+        console.log(chalk.blue.bold('\n🌍 Creating Prolific Study\n'));
+        
+        const { question } = getReadline();
+        
+        // Get experiment
+        let experimentSlug = options.experiment;
+        if (!experimentSlug) {
+          experimentSlug = await question(chalk.cyan('Experiment slug: '));
+        }
+        
+        const experiment = await prisma.experiment.findUnique({
+          where: { slug: experimentSlug },
+          include: {
+            _count: { select: { comparisons: true } }
+          }
+        });
+        
+        if (!experiment) {
+          console.log(chalk.red(`Experiment "${experimentSlug}" not found.`));
+          return;
+        }
+        
+        if (experiment.prolificStudyId) {
+          console.log(chalk.yellow(`Experiment already has a Prolific study: ${experiment.prolificStudyId}`));
+          const proceed = await question(chalk.cyan('Create another study? (y/N): '));
+          if (proceed.toLowerCase() !== 'y') {
+            return;
+          }
+        }
+        
+        // Get study details
+        const title = options.title || await question(
+          chalk.cyan(`Study title (${chalk.gray(`Evaluate ${experiment.name}`)}): `)
+        ) || `Evaluate ${experiment.name}`;
+        
+        const description = options.description || await question(
+          chalk.cyan(`Description (${chalk.gray('Help us evaluate AI model outputs')}): `)
+        ) || `Help us evaluate AI model outputs for ${experiment.name}`;
+        
+        const reward = parseFloat(options.reward);
+        const totalParticipants = parseInt(options.participants);
+        
+        console.log(chalk.gray('\n📊 Study Summary:'));
+        console.log(chalk.gray(`  Experiment: ${experiment.name} (${experimentSlug})`));
+        console.log(chalk.gray(`  Comparisons: ${experiment._count.comparisons}`));
+        console.log(chalk.gray(`  Estimated time: ~${Math.ceil(experiment._count.comparisons * 2)} minutes`));
+        console.log(chalk.gray(`  Reward: $${reward.toFixed(2)}`));
+        console.log(chalk.gray(`  Participants: ${totalParticipants}`));
+        console.log(chalk.gray(`  Total cost: ~$${(reward * totalParticipants).toFixed(2)} (+ Prolific fees)`));
+        
+        const confirm = await question(chalk.cyan('\nCreate study? (Y/n): '));
+        if (confirm.toLowerCase() === 'n') {
+          console.log(chalk.gray('Study creation cancelled.'));
+          return;
+        }
+        
+        console.log(chalk.yellow('\n🔄 Creating study on Prolific...'));
+        
+        const prolificStudy = await prolificService.createStudy({
+          experimentId: experiment.id,
+          title,
+          description,
+          reward,
+          totalParticipants
+        });
+        
+        console.log(chalk.green.bold('\n✅ Prolific study created successfully!\n'));
+        console.log(chalk.white('Study ID:'), chalk.yellow(prolificStudy.id));
+        console.log(chalk.white('Status:'), chalk.yellow(prolificStudy.status));
+        console.log(chalk.white('External URL:'), chalk.blue.underline(prolificStudy.external_study_url));
+        console.log(chalk.white('Prolific Dashboard:'), 
+          chalk.blue.underline(`https://app.prolific.co/researcher/studies/${prolificStudy.id}`));
+        
+        console.log(chalk.gray('\nNext steps:'));
+        console.log(chalk.gray(`1. Review study on Prolific dashboard`));
+        console.log(chalk.gray(`2. Publish study: experiment-cli prolific:publish --study ${prolificStudy.id}`));
+        console.log(chalk.gray(`3. Monitor progress: experiment-cli prolific:status --study ${prolificStudy.id}`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error creating Prolific study:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+program
+  .command('prolific:list')
+  .description('List all Prolific studies')
+  .action(async () => {
+    await requireAuth('list Prolific studies', async () => {
+      try {
+        console.log(chalk.blue.bold('\n🌍 Prolific Studies\n'));
+        
+        const experiments = await prolificService.getExperimentsWithProlificStudies();
+        
+        if (experiments.length === 0) {
+          console.log(chalk.gray('No experiments with Prolific studies found.'));
+          return;
+        }
+        
+        console.log(chalk.yellow('🔄 Fetching study details from Prolific...'));
+        
+        for (const exp of experiments) {
+          try {
+            const study = await prolificService.getStudy(exp.prolificStudyId!);
+            
+            const statusColor = {
+              'UNPUBLISHED': 'gray',
+              'ACTIVE': 'green',
+              'PAUSED': 'yellow',
+              'COMPLETED': 'blue',
+              'AWAITING_REVIEW': 'cyan'
+            }[study.status] || 'white';
+            
+            console.log(chalk.bold.white(`${exp.name}`));
+            console.log(chalk.gray(`  Experiment ID: ${exp.id}`));
+            console.log(chalk.gray(`  Study ID: ${exp.prolificStudyId}`));
+            console.log(chalk[statusColor](`  Status: ${study.status}`));
+            console.log(chalk.gray(`  Participants: ${study.number_of_submissions}/${study.total_available_places}`));
+            console.log(chalk.gray(`  Reward: $${(study.reward / 100).toFixed(2)}`));
+            console.log(chalk.gray(`  Created: ${new Date(study.date_created).toLocaleDateString()}`));
+            console.log(chalk.blue.underline(`  Dashboard: https://app.prolific.co/researcher/studies/${exp.prolificStudyId}`));
+            console.log();
+          } catch (error) {
+            console.log(chalk.bold.white(`${exp.name}`));
+            console.log(chalk.red(`  Error: Failed to fetch study details`));
+            console.log(chalk.gray(`  Study ID: ${exp.prolificStudyId}`));
+            console.log();
+          }
+        }
+        
+      } catch (error) {
+        console.error(chalk.red('Error listing Prolific studies:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    });
+  });
+
+program
+  .command('prolific:status')
+  .description('Get status of a Prolific study')
+  .option('-s, --study <studyId>', 'Prolific study ID')
+  .action(async (options) => {
+    await requireAuth('check Prolific study status', async () => {
+      try {
+        const { question } = getReadline();
+        
+        let studyId = options.study;
+        if (!studyId) {
+          studyId = await question(chalk.cyan('Prolific study ID: '));
+        }
+        
+        console.log(chalk.yellow('🔄 Fetching study status...'));
+        
+        const study = await prolificService.getStudy(studyId);
+        const submissions = await prolificService.getSubmissions(studyId);
+        
+        const statusColor = {
+          'UNPUBLISHED': 'gray',
+          'ACTIVE': 'green',
+          'PAUSED': 'yellow',
+          'COMPLETED': 'blue',
+          'AWAITING_REVIEW': 'cyan'
+        }[study.status] || 'white';
+        
+        console.log(chalk.blue.bold('\n📊 Study Status\n'));
+        console.log(chalk.white('Study ID:'), chalk.yellow(studyId));
+        console.log(chalk.white('Name:'), chalk.white(study.name));
+        console.log(chalk.white('Status:'), chalk[statusColor](study.status));
+        console.log(chalk.white('Participants:'), chalk.yellow(`${study.number_of_submissions}/${study.total_available_places}`));
+        console.log(chalk.white('Reward:'), chalk.green(`$${(study.reward / 100).toFixed(2)}`));
+        console.log(chalk.white('Created:'), chalk.gray(new Date(study.date_created).toLocaleDateString()));
+        
+        if (submissions.results.length > 0) {
+          console.log(chalk.blue('\n📋 Submissions:'));
+          const submissionCounts = submissions.results.reduce((acc, sub) => {
+            acc[sub.status] = (acc[sub.status] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+          
+          Object.entries(submissionCounts).forEach(([status, count]) => {
+            const color = {
+              'ACTIVE': 'yellow',
+              'AWAITING_REVIEW': 'cyan',
+              'APPROVED': 'green',
+              'REJECTED': 'red',
+              'RETURNED': 'gray'
+            }[status] || 'white';
+            console.log(chalk[color](`  ${status}: ${count}`));
+          });
+        }
+        
+        console.log(chalk.blue.underline(`\nProlific Dashboard: https://app.prolific.co/researcher/studies/${studyId}`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error fetching study status:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    });
+  });
+
+program
+  .command('prolific:publish')
+  .description('Publish a Prolific study')
+  .option('-s, --study <studyId>', 'Prolific study ID')
+  .action(async (options) => {
+    await requireAuth('publish Prolific studies', async () => {
+      try {
+        const { question } = getReadline();
+        
+        let studyId = options.study;
+        if (!studyId) {
+          studyId = await question(chalk.cyan('Prolific study ID to publish: '));
+        }
+        
+        // Get current status
+        const study = await prolificService.getStudy(studyId);
+        
+        if (study.status !== 'UNPUBLISHED') {
+          console.log(chalk.yellow(`Study is already ${study.status.toLowerCase()}. Cannot publish.`));
+          return;
+        }
+        
+        console.log(chalk.gray('\n📊 Study to publish:'));
+        console.log(chalk.gray(`  Name: ${study.name}`));
+        console.log(chalk.gray(`  Participants: ${study.total_available_places}`));
+        console.log(chalk.gray(`  Reward: $${(study.reward / 100).toFixed(2)}`));
+        console.log(chalk.gray(`  Total cost: ~$${((study.reward / 100) * study.total_available_places).toFixed(2)} (+ Prolific fees)`));
+        
+        const confirm = await question(chalk.cyan('\nPublish study? (Y/n): '));
+        if (confirm.toLowerCase() === 'n') {
+          console.log(chalk.gray('Study publication cancelled.'));
+          return;
+        }
+        
+        console.log(chalk.yellow('🔄 Publishing study...'));
+        
+        const updatedStudy = await prolificService.updateStudyStatus(studyId, { action: 'publish' });
+        
+        console.log(chalk.green.bold('\n✅ Study published successfully!'));
+        console.log(chalk.white('Status:'), chalk.green(updatedStudy.status));
+        console.log(chalk.blue.underline(`Dashboard: https://app.prolific.co/researcher/studies/${studyId}`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error publishing study:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+program
+  .command('prolific:sync')
+  .description('Sync Prolific study data with database including participant demographics')
+  .option('-s, --study <studyId>', 'Prolific study ID')
+  .option('--all', 'Sync all studies')
+  .action(async (options) => {
+    await requireAuth('sync Prolific data', async () => {
+      try {
+        if (options.all) {
+          console.log(chalk.blue.bold('\n🔄 Syncing All Prolific Studies\n'));
+          
+          const experiments = await prolificService.getExperimentsWithProlificStudies();
+          
+          if (experiments.length === 0) {
+            console.log(chalk.gray('No experiments with Prolific studies found.'));
+            return;
+          }
+          
+          let totalSynced = 0;
+          
+          for (const exp of experiments) {
+            try {
+              console.log(chalk.yellow(`📡 Syncing ${exp.name} (${exp.prolificStudyId})...`));
+              
+              const result = await prolificService.syncStudyWithDatabase(exp.prolificStudyId!);
+              
+              console.log(chalk.green(`  ✅ Synced ${result.syncedParticipants} participants`));
+              console.log(chalk.gray(`  📊 Study status: ${result.study.status}`));
+              console.log(chalk.gray(`  👥 Submissions: ${result.submissions.length}`));
+              
+              totalSynced += result.syncedParticipants;
+              
+            } catch (error) {
+              console.log(chalk.red(`  ❌ Failed to sync ${exp.name}: ${error}`));
+            }
+          }
+          
+          console.log(chalk.green.bold(`\n✅ Sync complete! Total participants synced: ${totalSynced}`));
+          
+        } else {
+          const { question } = getReadline();
+          
+          let studyId = options.study;
+          if (!studyId) {
+            studyId = await question(chalk.cyan('Prolific study ID to sync: '));
+          }
+          
+          console.log(chalk.blue.bold('\n🔄 Syncing Prolific Study\n'));
+          console.log(chalk.yellow(`📡 Syncing study ${studyId}...`));
+          
+          const result = await prolificService.syncStudyWithDatabase(studyId);
+          
+          console.log(chalk.green.bold('\n✅ Sync complete!\n'));
+          console.log(chalk.white('Study:'), chalk.yellow(result.study.name));
+          console.log(chalk.white('Status:'), chalk.yellow(result.study.status));
+          console.log(chalk.white('Participants synced:'), chalk.green(result.syncedParticipants));
+          console.log(chalk.white('Total submissions:'), chalk.yellow(result.submissions.length));
+          
+          // Show demographic summary from synced participants
+          console.log(chalk.blue('\n📊 Participant Summary:'));
+          console.log(chalk.gray(`  Total submissions: ${result.submissions.length}`));
+          
+          // Find the experiment for this study
+          const experiment = await prisma.experiment.findFirst({
+            where: { prolificStudyId: studyId }
+          });
+          
+          // Get detailed participant data from database
+          const syncedParticipants = experiment ? await prisma.participant.findMany({
+            where: { 
+              experimentId: experiment.id
+            },
+            select: { metadata: true, prolificId: true }
+          }).then(participants => participants.filter(p => p.prolificId)) : [];
+          
+          if (syncedParticipants.length > 0) {
+            console.log(chalk.gray(`  Synced with demographics: ${syncedParticipants.length}`));
+            
+            // Extract demographics from metadata
+            const demographics = syncedParticipants
+              .map(p => p.metadata as any)
+              .filter(m => m && (m.age || m.sex || m.nationality));
+            
+            if (demographics.length > 0) {
+              console.log(chalk.blue('\n📈 Demographics Summary:'));
+              
+              // Age distribution
+              const ages = demographics.filter(d => d.age).map(d => Number(d.age));
+              if (ages.length > 0) {
+                const avgAge = Math.round(ages.reduce((a, b) => a + b, 0) / ages.length);
+                console.log(chalk.gray(`  Age: ${Math.min(...ages)}-${Math.max(...ages)} (avg: ${avgAge})`));
+              }
+              
+              // Gender distribution
+              const genders = demographics.filter(d => d.sex).reduce((acc, d) => {
+                acc[d.sex] = (acc[d.sex] || 0) + 1;
+                return acc;
+              }, {} as Record<string, number>);
+              if (Object.keys(genders).length > 0) {
+                const genderStr = Object.entries(genders)
+                  .map(([gender, count]) => `${gender}: ${count}`)
+                  .join(', ');
+                console.log(chalk.gray(`  Gender: ${genderStr}`));
+              }
+              
+              // Top nationalities
+              const nationalities = demographics.filter(d => d.nationality).reduce((acc, d) => {
+                acc[d.nationality] = (acc[d.nationality] || 0) + 1;
+                return acc;
+              }, {} as Record<string, number>);
+              if (Object.keys(nationalities).length > 0) {
+                const topNationalities = Object.entries(nationalities)
+                  .sort(([,a], [,b]) => (b as number) - (a as number))
+                  .slice(0, 3)
+                  .map(([nat, count]) => `${nat}: ${count}`)
+                  .join(', ');
+                console.log(chalk.gray(`  Top nationalities: ${topNationalities}`));
+              }
+            }
+          }
+        }
+        
+      } catch (error) {
+        console.error(chalk.red('Error syncing Prolific data:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+// Debug command
+program
+  .command('debug:progress <slug>')
+  .description('Debug progress calculation for an experiment')
+  .action(async (slug) => {
+    try {
+      const experiment = await prisma.experiment.findUnique({
+        where: { slug },
+        include: {
+          _count: {
+            select: {
+              comparisons: true,
+              participants: true,
+              evaluations: true
+            }
+          }
+        }
+      });
+      
+      if (!experiment) {
+        console.log(chalk.red(`Experiment "${slug}" not found.`));
+        return;
+      }
+      
+      console.log(chalk.blue.bold('\n🔍 Progress Debug for "' + experiment.name + '"\n'));
+      
+      console.log(chalk.white('Database Counts:'));
+      console.log(chalk.gray(`  Comparisons: ${experiment._count.comparisons}`));
+      console.log(chalk.gray(`  Participants: ${experiment._count.participants}`));
+      console.log(chalk.gray(`  Evaluations: ${experiment._count.evaluations}`));
+      
+      console.log(chalk.white('\nExperiment Config:'));
+      console.log(chalk.gray(JSON.stringify(experiment.config, null, 2)));
+      
+      // Calculate progress the same way the frontend does
+      const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || 5;
+      const targetEvaluations = experiment._count.comparisons * evaluationsPerComparison;
+      const progressPercentage = Math.min((experiment._count.evaluations / targetEvaluations) * 100, 100);
+      
+      console.log(chalk.white('\nProgress Calculation:'));
+      console.log(chalk.gray(`  evaluationsPerComparison from config: ${experiment.config?.evaluationsPerComparison}`));
+      console.log(chalk.gray(`  evaluationsPerComparison used: ${evaluationsPerComparison}`));
+      console.log(chalk.gray(`  targetEvaluations: ${experiment._count.comparisons} × ${evaluationsPerComparison} = ${targetEvaluations}`));
+      console.log(chalk.gray(`  actual evaluations: ${experiment._count.evaluations}`));
+      console.log(chalk.yellow(`  progressPercentage: ${experiment._count.evaluations}/${targetEvaluations} = ${Math.round(progressPercentage)}%`));
+      
+      if (progressPercentage !== 100 && experiment._count.evaluations > 0) {
+        console.log(chalk.red('\n⚠️  Progress is not 100%. Possible issues:'));
+        if (!experiment.config?.evaluationsPerComparison) {
+          console.log(chalk.red('  - Missing evaluationsPerComparison in config (defaulting to 5)'));
+          
+          // Auto-fix suggestion
+          if (experiment._count.comparisons > 0) {
+            const actualEvaluationsPerComparison = Math.round(experiment._count.evaluations / experiment._count.comparisons);
+            console.log(chalk.yellow(`\n💡 Auto-fix suggestion:`));
+            console.log(chalk.yellow(`  Based on current data, this experiment appears to need ${actualEvaluationsPerComparison} evaluations per comparison`));
+            console.log(chalk.yellow(`  Run: npm run experiment -- fix-config ${slug} --evaluations-per-comparison ${actualEvaluationsPerComparison}`));
+          }
+        }
+        if (experiment._count.evaluations < targetEvaluations) {
+          console.log(chalk.red(`  - Need ${targetEvaluations - experiment._count.evaluations} more evaluations`));
+        }
+      }
+      
+    } catch (error) {
+      console.error(chalk.red('Error debugging experiment:'), error);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+
+// Fix config command
+program
+  .command('fix-config <slug>')
+  .description('Fix experiment configuration')
+  .option('--evaluations-per-comparison <number>', 'Set evaluations per comparison')
+  .action(async (slug, options) => {
+    await requireAuth('fix experiment config', async () => {
+      try {
+        const experiment = await prisma.experiment.findUnique({
+          where: { slug }
+        });
+        
+        if (!experiment) {
+          console.log(chalk.red(`Experiment "${slug}" not found.`));
+          return;
+        }
+        
+        const updatedConfig = {
+          ...experiment.config,
+        };
+        
+        if (options.evaluationsPerComparison) {
+          updatedConfig.evaluationsPerComparison = parseInt(options.evaluationsPerComparison);
+        }
+        
+        await prisma.experiment.update({
+          where: { slug },
+          data: { config: updatedConfig }
+        });
+        
+        console.log(chalk.green.bold('\n✅ Configuration updated successfully!\n'));
+        console.log(chalk.white('Updated config:'));
+        console.log(chalk.gray(JSON.stringify(updatedConfig, null, 2)));
+        
+      } catch (error) {
+        console.error(chalk.red('Error fixing config:'), error);
       } finally {
         await prisma.$disconnect();
       }

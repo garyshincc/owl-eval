@@ -5,12 +5,10 @@ Owl Eval - Unified command-line interface for the evaluation harness.
 
 import click
 
-# Import CLI modules - optimized imports
 try:
-    from cli.postgres import postgres_cli
-    from cli.tigris import tigris_cli  
-    from cli.testdata import testdata_cli
-    from cli.experiments import experiments_cli
+    from scripts.python.postgres import postgres_cli
+    from scripts.python.tigris import tigris_cli  
+    from scripts.python.testdata import testdata_cli
 except ImportError as e:
     click.echo(f"❌ Error importing CLI modules: {e}")
     click.echo("Make sure you're in the correct directory and dependencies are installed.")
@@ -27,15 +25,11 @@ def owl_eval(ctx):
     
     A unified tool for managing experiments, data, and infrastructure.
     """
-    # Ensure context object exists for subcommands
     ctx.ensure_object(dict)
 
-
-# Register command groups  
 owl_eval.add_command(postgres_cli, name='postgres')
 owl_eval.add_command(tigris_cli, name='tigris')
 owl_eval.add_command(testdata_cli, name='testdata')
-owl_eval.add_command(experiments_cli, name='experiments')
 
 
 if __name__ == '__main__':

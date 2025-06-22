@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.832.0",
     "@prisma/client": "^6.8.2",
     "@types/node": "^22.15.21",
     "chalk": "^5.4.1",

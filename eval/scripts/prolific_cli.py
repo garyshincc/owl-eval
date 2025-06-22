@@ -1,6 +1,21 @@
 #!/usr/bin/env python
 """
 CLI for managing Prolific studies.
+
+⚠️  DEPRECATED: This Python CLI is deprecated in favor of the new TypeScript CLI.
+
+Please use the new consolidated TypeScript CLI instead:
+- npm run experiment -- prolific:create
+- npm run experiment -- prolific:list  
+- npm run experiment -- prolific:status
+- npm run experiment -- prolific:publish
+- npm run experiment -- prolific:sync
+
+The new CLI offers:
+- Direct integration with the database
+- Automatic demographic data syncing
+- Better error handling and user experience
+- Consistent with the rest of the codebase
 """
 
 import click
@@ -10,11 +25,18 @@ import json
 from datetime import datetime
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
-from prolific.client import ProlificClient
-from prolific.integration import ProlificIntegration
-from evaluation.ab_testing import ABTestingFramework
+try:
+    from prolific.client import ProlificClient
+    from prolific.integration import ProlificIntegration
+    from evaluation.ab_testing import ABTestingFramework
+except ImportError as e:
+    click.echo(f"❌ Error importing modules: {e}")
+    click.echo("Note: Prolific CLI requires the full project structure and dependencies.")
+    click.echo("Consider using the TypeScript experiment-cli.ts for Prolific operations.")
+    sys.exit(1)
 
 
 @click.group()
@@ -198,6 +220,15 @@ def export(study_id, output):
 
 
 def main():
+    click.echo("\n⚠️  DEPRECATION WARNING ⚠️", err=True)
+    click.echo("This Python CLI is deprecated. Please use the new TypeScript CLI:", err=True)
+    click.echo("  npm run experiment -- prolific:create", err=True)
+    click.echo("  npm run experiment -- prolific:list", err=True)
+    click.echo("  npm run experiment -- prolific:status", err=True)
+    click.echo("  npm run experiment -- prolific:publish", err=True)
+    click.echo("  npm run experiment -- prolific:sync", err=True)
+    click.echo("", err=True)
+    
     cli()
 
 

@@ -5,13 +5,13 @@ Integration between Prolific and the World Model Evaluation system.
 import os
 import json
 import uuid
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
 
-from ..evaluation.ab_testing import ABTestingFramework
-from ..evaluation.test_scenarios import TestScenarios
-from .client import ProlificClient, ProlificStudyManager
+from evaluation.ab_testing import ABTestingFramework
+from evaluation.test_scenarios import TestScenarios
+from prolific.client import ProlificClient, ProlificStudyManager
 
 logger = logging.getLogger(__name__)
 
