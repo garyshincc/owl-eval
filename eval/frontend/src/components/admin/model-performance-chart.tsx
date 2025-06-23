@@ -1,15 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { 
   ResponsiveContainer, 
   RadarChart, 
@@ -28,8 +21,7 @@ import {
   TrendingUp, 
   Award, 
   Target,
-  BarChart3,
-  Filter
+  BarChart3
 } from 'lucide-react'
 
 interface ModelPerformance {
@@ -38,7 +30,9 @@ interface ModelPerformance {
   scenario?: string
   win_rate: number
   num_evaluations: number
-  experimentId?: string
+  experimentId: string
+  evaluationType: 'comparison' | 'single_video'
+  quality_score?: number // For single video evaluations (1-5 scale)
   detailed_scores?: {
     A_much_better: number
     A_slightly_better: number
@@ -46,32 +40,23 @@ interface ModelPerformance {
     B_slightly_better: number
     B_much_better: number
   }
+  score_distribution?: {
+    1: number
+    2: number
+    3: number
+    4: number
+    5: number
+  }
 }
 
 interface ModelPerformanceChartProps {
   performance: ModelPerformance[]
   loading?: boolean
-  experiments?: any[]
 }
 
-export function ModelPerformanceChart({ performance, loading, experiments = [] }: ModelPerformanceChartProps) {
-  const [selectedExperiment, setSelectedExperiment] = useState<string | null>(null)
-  
-  // Set default to latest experiment on mount
-  useEffect(() => {
-    if (experiments.length > 0 && !selectedExperiment) {
-      // Sort by createdAt and select the latest
-      const sortedExperiments = [...experiments].sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-      setSelectedExperiment(sortedExperiments[0].id)
-    }
-  }, [experiments, selectedExperiment])
-  
-  // Filter performance data by selected experiment
-  const filteredPerformance = selectedExperiment 
-    ? performance.filter(p => p.experimentId === selectedExperiment)
-    : performance
+export function ModelPerformanceChart({ performance, loading }: ModelPerformanceChartProps) {
+  // Use performance data directly since parent component already handles experiment filtering
+  const filteredPerformance = performance
   if (loading) {
     return (
       <Card>
@@ -109,27 +94,47 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
     )
   }
 
+  // Helper function to get display value based on evaluation type
+  const getDisplayValue = (item: ModelPerformance): number => {
+    if (item.evaluationType === 'single_video') {
+      // For single video, use quality_score converted to 0-100 scale
+      return item.quality_score ? (item.quality_score / 5) * 100 : item.win_rate * 100
+    } else {
+      // For comparison, use win_rate
+      return item.win_rate * 100
+    }
+  }
+
+  // Determine if we have mixed evaluation types
+  const evaluationTypes = Array.from(new Set(filteredPerformance.map(p => p.evaluationType)))
+
   // Process data for different chart types using filtered performance
   const modelData = filteredPerformance.reduce((acc, item) => {
     const model = acc.find(m => m.model === item.model)
+    const displayValue = getDisplayValue(item)
+    
     if (model) {
-      model[item.dimension] = item.win_rate * 100
+      model[item.dimension] = displayValue
+      model.total_evaluations += item.num_evaluations
     } else {
       acc.push({
         model: item.model,
-        [item.dimension]: item.win_rate * 100,
-        total_evaluations: item.num_evaluations
+        [item.dimension]: displayValue,
+        total_evaluations: item.num_evaluations,
+        evaluationType: item.evaluationType
       })
     }
     return acc
   }, [] as any[])
 
-  const radarData = ['overall_quality', 'controllability', 'visual_quality', 'temporal_consistency']
-    .filter(dimension => filteredPerformance.some(p => p.dimension === dimension))
+  // Get all available dimensions from the data
+  const availableDimensions = Array.from(new Set(filteredPerformance.map(p => p.dimension)))
+  
+  const radarData = availableDimensions
     .map(dimension => {
       const dimensionData: any = { dimension }
       filteredPerformance.filter(p => p.dimension === dimension).forEach(p => {
-        dimensionData[p.model] = p.win_rate * 100
+        dimensionData[p.model] = getDisplayValue(p)
       })
       return dimensionData
     })
@@ -138,12 +143,15 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
     model_dimension: `${item.model} - ${item.dimension}`,
     model: item.model,
     dimension: item.dimension,
-    win_rate: item.win_rate * 100,
-    evaluations: item.num_evaluations
+    win_rate: getDisplayValue(item),
+    quality_score: item.quality_score,
+    evaluations: item.num_evaluations,
+    evaluationType: item.evaluationType
   }))
 
   // Get unique models for styling
   const models = Array.from(new Set(filteredPerformance.map(p => p.model)))
+  
   const modelColors = [
     'hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--chart-4))', 
     'hsl(var(--chart-5))', 'hsl(var(--chart-3))', 'hsl(var(--destructive))', 'hsl(var(--chart-2))'
@@ -167,42 +175,6 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
 
   return (
     <div className="space-y-6">
-      {/* Experiment Filter */}
-      {experiments.length > 1 && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Filter by Experiment:</span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  {selectedExperiment 
-                    ? experiments.find(exp => exp.id === selectedExperiment)?.name || 'Unknown Experiment'
-                    : 'All Experiments'
-                  }
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={() => setSelectedExperiment(null)}>
-                  All Experiments
-                </DropdownMenuItem>
-                {experiments
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .map((experiment) => (
-                    <DropdownMenuItem key={experiment.id} onClick={() => setSelectedExperiment(experiment.id)}>
-                      {experiment.name} {experiment.prolificStudyId && '(Prolific)'}
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          {selectedExperiment && (
-            <Badge variant="secondary" className="text-xs">
-              Showing performance for selected experiment
-            </Badge>
-          )}
-        </div>
-      )}
       
       {/* Summary Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -252,7 +224,12 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
           <CardHeader>
             <CardTitle className="text-lg">Performance Radar</CardTitle>
             <CardDescription>
-              Multi-dimensional performance comparison
+              {evaluationTypes.includes('single_video') 
+                ? evaluationTypes.includes('comparison')
+                  ? 'Multi-dimensional performance (mixed evaluation types)'
+                  : 'Multi-dimensional quality scores (0-100 scale)'
+                : 'Multi-dimensional win rates (comparison)'
+              }
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -331,7 +308,12 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
           <CardHeader>
             <CardTitle className="text-lg">Detailed Breakdown</CardTitle>
             <CardDescription>
-              Win rates by model and dimension
+              {evaluationTypes.includes('single_video') 
+                ? evaluationTypes.includes('comparison')
+                  ? 'Performance scores by model and dimension (mixed types)'
+                  : 'Quality scores by model and dimension (0-100 scale)'
+                : 'Win rates by model and dimension'
+              }
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -354,11 +336,19 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
                     stroke="hsl(var(--border))"
                   />
                   <Tooltip 
-                    formatter={(value: any, _name: any, props: any) => [
-                      `${Number(value).toFixed(1)}%`,
-                      'Win Rate',
-                      `(${props.payload.evaluations} evaluations)`
-                    ]}
+                    formatter={(value: any, _name: any, props: any) => {
+                      const evaluationType = props.payload.evaluationType
+                      const label = evaluationType === 'single_video' ? 'Quality Score' : 'Win Rate'
+                      const extraInfo = evaluationType === 'single_video' && props.payload.quality_score 
+                        ? `(${props.payload.quality_score.toFixed(1)}/5 avg, ${props.payload.evaluations} evaluations)`
+                        : `(${props.payload.evaluations} evaluations)`
+                      
+                      return [
+                        `${Number(value).toFixed(1)}%`,
+                        label,
+                        extraInfo
+                      ]
+                    }}
                     labelFormatter={(label) => {
                       const parts = String(label).split(' - ')
                       return `${parts[0]} - ${parts[1]}`
@@ -396,14 +386,19 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
         <CardHeader>
           <CardTitle className="text-lg">Performance Summary</CardTitle>
           <CardDescription>
-            Detailed evaluation scores using dimensionScores from evaluations
+            {evaluationTypes.includes('single_video') 
+              ? evaluationTypes.includes('comparison')
+                ? 'Detailed evaluation scores (mixed evaluation types)'
+                : 'Quality score distributions and averages'
+              : 'Detailed comparison scores with tug-of-war visualization'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
             {filteredPerformance.length > 0 ? (
               (() => {
-                // Group by dimension instead of model for tug-of-war comparison
+                // Group by dimension for display
                 const dimensionGroups = filteredPerformance.reduce((acc, item) => {
                   if (!acc[item.dimension]) {
                     acc[item.dimension] = []
@@ -413,14 +408,20 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
                 }, {} as Record<string, ModelPerformance[]>)
 
                 return Object.entries(dimensionGroups).map(([dimension, items]) => {
-                  const modelA = items.find(item => item.model.toLowerCase().includes('model-a') || item.model.toLowerCase().includes('modela'))
-                  const modelB = items.find(item => item.model.toLowerCase().includes('model-b') || item.model.toLowerCase().includes('modelb'))
+                  // Check if this dimension has comparison data
+                  const comparisonItems = items.filter(item => item.evaluationType === 'comparison')
+                  const singleVideoItems = items.filter(item => item.evaluationType === 'single_video')
                   
-                  if (!modelA || !modelB || !modelA.detailed_scores || !modelB.detailed_scores) return null
+                  if (comparisonItems.length >= 2) {
+                    // Render comparison view (tug-of-war) - take first two models
+                    const modelA = comparisonItems[0]
+                    const modelB = comparisonItems[1]
+                    
+                    if (!modelA || !modelB || !modelA.detailed_scores || !modelB.detailed_scores) return null
 
-                  // Calculate the balance score (-2 to +2, where -2 = A much better, +2 = B much better)
-                  const scores = modelA.detailed_scores
-                  const totalVotes = scores.A_much_better + scores.A_slightly_better + scores.Equal + scores.B_slightly_better + scores.B_much_better
+                    // Calculate the balance score (-2 to +2, where -2 = A much better, +2 = B much better)
+                    const scores = modelA.detailed_scores
+                    const totalVotes = scores.A_much_better + scores.A_slightly_better + scores.Equal + scores.B_slightly_better + scores.B_much_better
                   
                   const weightedScore = (
                     scores.A_much_better * (-2) +
@@ -508,7 +509,65 @@ export function ModelPerformanceChart({ performance, loading, experiments = [] }
                         )}
                       </div>
                     </div>
-                  )
+                    )
+                  } else if (singleVideoItems.length > 0) {
+                    // Render single video view (quality scores)
+                    return (
+                      <div key={dimension} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="font-semibold text-lg capitalize">
+                            {dimension.replace(/_/g, ' ')}
+                          </h3>
+                          <Badge variant="secondary">
+                            Single Video Evaluation
+                          </Badge>
+                        </div>
+
+                        {/* Model scores */}
+                        <div className="space-y-4">
+                          {singleVideoItems.map((item) => (
+                            <div key={item.model} className="border rounded p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium">{item.model}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {item.num_evaluations} evaluations
+                                </span>
+                              </div>
+                              
+                              {/* Quality score display */}
+                              <div className="flex items-center gap-4 mb-3">
+                                <div className="text-2xl font-bold">
+                                  {item.quality_score ? item.quality_score.toFixed(1) : 'N/A'}
+                                  <span className="text-sm text-muted-foreground font-normal">/5</span>
+                                </div>
+                                <div className="text-lg text-muted-foreground">
+                                  ({(getDisplayValue(item)).toFixed(1)}% quality)
+                                </div>
+                              </div>
+
+                              {/* Score distribution */}
+                              {item.score_distribution && (
+                                <div className="grid grid-cols-5 gap-1 mb-2">
+                                  {[1, 2, 3, 4, 5].map(score => (
+                                    <div key={score} className={`text-center p-2 rounded text-xs ${
+                                      score <= 2 ? 'bg-red-100 dark:bg-red-900/30' :
+                                      score === 3 ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                                      'bg-green-100 dark:bg-green-900/30'
+                                    }`}>
+                                      <div className="font-semibold">{score}⭐</div>
+                                      <div>{item.score_distribution?.[score as keyof typeof item.score_distribution] || 0}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  }
+                  
+                  return null
                 }).filter(Boolean)
               })()
             ) : (

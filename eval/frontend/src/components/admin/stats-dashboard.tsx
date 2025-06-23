@@ -167,9 +167,6 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
           <CardContent>
             <div className="flex items-center justify-between">
               <p className="text-2xl font-bold text-foreground">{totalParticipants}</p>
-              <Badge variant="secondary" className="text-xs bg-accent/20 text-accent">
-                Active users
-              </Badge>
             </div>
           </CardContent>
         </Card>
@@ -184,9 +181,6 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
           <CardContent>
             <div className="flex items-center justify-between">
               <p className="text-2xl font-bold text-foreground">{filteredExperiments.reduce((sum, exp) => sum + exp._count.comparisons, 0)}</p>
-              <Badge variant="secondary" className="text-xs">
-                {Math.round(overallProgress.totalTargetEvaluations / (filteredExperiments.reduce((sum, exp) => sum + exp._count.comparisons, 0) || 1))} avg target
-              </Badge>
             </div>
           </CardContent>
         </Card>
