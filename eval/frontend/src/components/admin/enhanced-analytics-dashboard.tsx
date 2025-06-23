@@ -415,8 +415,8 @@ export function EnhancedAnalyticsDashboard({
     if (participantsWithPaymentData.length > 0) {
       const dollarsPerHour = participantsWithPaymentData.map(p => {
         const totalPaymentCents = p.submission!.totalPayment!
-        const timeTakenMinutes = p.submission!.timeTaken!
-        const dollarPerHour = (totalPaymentCents / 100) / (timeTakenMinutes / 60)
+        const timeTakenSeconds = p.submission!.timeTaken!
+        const dollarPerHour = (totalPaymentCents / 100) / (timeTakenSeconds / 3600)
         return dollarPerHour
       })
       averageDollarPerHour = dollarsPerHour.reduce((sum, rate) => sum + rate, 0) / dollarsPerHour.length
