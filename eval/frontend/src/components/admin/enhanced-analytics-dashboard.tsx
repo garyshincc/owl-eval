@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,12 +23,22 @@ interface ModelPerformance {
   scenario?: string
   win_rate: number
   num_evaluations: number
+  experimentId: string
+  evaluationType: 'comparison' | 'single_video'
+  quality_score?: number // For single video evaluations (1-5 scale)
   detailed_scores?: {
     A_much_better: number
     A_slightly_better: number
     Equal: number
     B_slightly_better: number
     B_much_better: number
+  }
+  score_distribution?: {
+    1: number
+    2: number
+    3: number
+    4: number
+    5: number
   }
 }
 
@@ -69,14 +79,29 @@ interface DemographicsSummary {
   countryDistribution: Record<string, number>
 }
 
+interface FilteredSummary {
+  totalParticipants: number
+  participantsWithDemographics: number
+  experimentTotalParticipants: number
+  averageAge?: number
+  averageDollarPerHour?: number
+  averageDollarPerEvaluation?: number
+}
+
 interface EnhancedAnalyticsProps {
   loading?: boolean
   selectedGroup?: string | null
   onGroupChange?: (group: string | null) => void
-  experiments?: any[]
+  experiments?: Array<{
+    id: string
+    name: string
+    createdAt: string
+    prolificStudyId?: string | null
+    group?: string | null
+  }>
   onRefresh?: () => void
   selectedExperiment?: string | null
-  onExperimentChange?: (experimentId: string | null) => void
+  onExperimentChange?: (experimentId: string) => void
 }
 
 export function EnhancedAnalyticsDashboard({ 
@@ -100,11 +125,14 @@ export function EnhancedAnalyticsDashboard({
     ageMax: 80,
     sex: 'all',
     country: 'all',
-    experimentGroup: selectedGroup || 'all'
+    experimentGroup: selectedGroup || ''
   })
   const [availableCountries, setAvailableCountries] = useState<string[]>([])
   const [availableSexes, setAvailableSexes] = useState<string[]>([])
   const [availableGroups, setAvailableGroups] = useState<string[]>([])
+  
+  // Debouncing for API calls
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchDemographicsData = useCallback(async () => {
     try {
@@ -134,7 +162,7 @@ export function EnhancedAnalyticsDashboard({
       
       const countries = Array.from(new Set(countryValues))
       const sexes = Array.from(new Set(sexValues))
-      const groups = Array.from(new Set(experiments.map(exp => exp.group).filter(Boolean)))
+      const groups = Array.from(new Set(experiments.map(exp => exp.group).filter((group): group is string => Boolean(group))))
       
       setAvailableCountries(countries)
       setAvailableSexes(sexes)
@@ -153,7 +181,7 @@ export function EnhancedAnalyticsDashboard({
             ...prev,
             ageMin: minAge,
             ageMax: maxAge,
-            experimentGroup: selectedGroup || 'all'
+            experimentGroup: selectedGroup || (groups.length > 0 ? groups[0] : '')
           }))
         }
       }
@@ -168,13 +196,18 @@ export function EnhancedAnalyticsDashboard({
     } finally {
       setDemographicsLoading(false)
     }
-  }, [experiments, selectedGroup, filters.ageMin, filters.ageMax])
+  }, [experiments.length, selectedGroup]) // Remove filters dependencies to avoid infinite loops
 
-  // Filter participants and performance data based on current filters
-  const applyFilters = useCallback(async () => {
+  // Apply local filters immediately (for participant count updates)
+  const applyLocalFilters = useCallback(() => {
     let filtered = allParticipants.filter(participant => {
       const demographics = participant.demographics
       if (!demographics) return false
+
+      // Specific experiment filter first (if selected)
+      if (selectedExperiment && participant.experimentId !== selectedExperiment) {
+        return false
+      }
 
       // Age filter
       if (demographics.age) {
@@ -198,12 +231,22 @@ export function EnhancedAnalyticsDashboard({
 
     setParticipants(filtered)
 
-    // Get filtered performance data based on demographic filters
+    // Update group selection if changed
+    if (filters.experimentGroup !== selectedGroup && onGroupChange) {
+      onGroupChange(filters.experimentGroup === '' ? null : filters.experimentGroup)
+    }
+  }, [allParticipants, filters, selectedGroup, onGroupChange, selectedExperiment])
+
+  // Debounced API call for performance data
+  const fetchPerformanceData = useCallback(async () => {
     try {
       const performanceResponse = await fetch('/api/filtered-performance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filters })
+        body: JSON.stringify({ 
+          filters,
+          selectedExperiment: selectedExperiment
+        })
       })
       if (performanceResponse.ok) {
         const performanceData = await performanceResponse.json()
@@ -211,22 +254,56 @@ export function EnhancedAnalyticsDashboard({
       }
     } catch (error) {
       console.error('Error fetching filtered performance data:', error)
-      // Fallback to empty data
       setFilteredPerformance([])
     }
+  }, [filters, selectedExperiment]) // Remove participants dependency
 
-    // Update group selection if changed
-    if (filters.experimentGroup !== selectedGroup && onGroupChange) {
-      onGroupChange(filters.experimentGroup === 'all' ? null : filters.experimentGroup)
+  // Debounced version of performance data fetching
+  const debouncedFetchPerformanceData = useCallback(() => {
+    // Clear existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current)
     }
-  }, [allParticipants, filters, selectedGroup, onGroupChange])
+    
+    // Set new timeout
+    debounceTimeoutRef.current = setTimeout(() => {
+      fetchPerformanceData()
+    }, 500) // 500ms delay
+  }, [fetchPerformanceData])
 
-  // Apply filters when filter state or participants change
+  // Apply local filters immediately when filter state changes
   useEffect(() => {
     if (allParticipants.length > 0) {
-      applyFilters()
+      applyLocalFilters()
+      debouncedFetchPerformanceData()
     }
-  }, [filters, allParticipants, applyFilters])
+  }, [filters, allParticipants, applyLocalFilters, debouncedFetchPerformanceData])
+
+  // Handle experiment changes separately (immediate fetch)
+  useEffect(() => {
+    if (allParticipants.length > 0) {
+      const fetchData = async () => {
+        try {
+          const performanceResponse = await fetch('/api/filtered-performance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              filters,
+              selectedExperiment: selectedExperiment
+            })
+          })
+          if (performanceResponse.ok) {
+            const performanceData = await performanceResponse.json()
+            setFilteredPerformance(performanceData || [])
+          }
+        } catch (error) {
+          console.error('Error fetching filtered performance data:', error)
+          setFilteredPerformance([])
+        }
+      }
+      fetchData()
+    }
+  }, [selectedExperiment, allParticipants.length])
 
   // Initial performance data load when component mounts
   useEffect(() => {
@@ -241,8 +318,9 @@ export function EnhancedAnalyticsDashboard({
               ageMax: 80,
               sex: 'all',
               country: 'all',
-              experimentGroup: selectedGroup || 'all'
-            }
+              experimentGroup: selectedGroup || ''
+            },
+            selectedExperiment: selectedExperiment
           })
         })
         if (performanceResponse.ok) {
@@ -255,12 +333,12 @@ export function EnhancedAnalyticsDashboard({
     }
 
     loadInitialPerformance()
-  }, [selectedGroup])
+  }, [selectedGroup, selectedExperiment])
 
   // Update group filter when external selectedGroup changes
   useEffect(() => {
     if (selectedGroup !== filters.experimentGroup) {
-      setFilters(prev => ({ ...prev, experimentGroup: selectedGroup || 'all' }))
+      setFilters(prev => ({ ...prev, experimentGroup: selectedGroup || '' }))
     }
   }, [selectedGroup, filters.experimentGroup])
 
@@ -270,8 +348,16 @@ export function EnhancedAnalyticsDashboard({
       ageMax: 80,
       sex: 'all',
       country: 'all',
-      experimentGroup: 'all'
+      experimentGroup: availableGroups.length > 0 ? availableGroups[0] : ''
     })
+    
+    // Reset experiment to latest when clearing filters
+    if (experiments.length > 0 && onExperimentChange) {
+      const sortedExperiments = [...experiments].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      onExperimentChange(sortedExperiments[0].id)
+    }
   }
 
   const handleRefresh = async () => {
@@ -284,9 +370,33 @@ export function EnhancedAnalyticsDashboard({
     fetchDemographicsData()
   }, [fetchDemographicsData])
 
+  // Auto-select latest experiment when experiments are loaded
+  useEffect(() => {
+    if (experiments.length > 0 && !selectedExperiment && onExperimentChange) {
+      const sortedExperiments = [...experiments].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      onExperimentChange(sortedExperiments[0].id)
+    }
+  }, [experiments.length, onExperimentChange]) // Remove selectedExperiment from dependencies
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+      }
+    }
+  }, [])
+
   // Calculate filtered summary
-  const getFilteredSummary = () => {
+  const getFilteredSummary = (): FilteredSummary | null => {
     if (participants.length === 0) return null
+
+    // Get total participants for the selected experiment (for percentage calculation)
+    const experimentParticipants = selectedExperiment 
+      ? allParticipants.filter(p => p.experimentId === selectedExperiment)
+      : allParticipants
 
     const participantsWithDemographics = participants.filter(p => p.demographics)
     
@@ -305,18 +415,28 @@ export function EnhancedAnalyticsDashboard({
     if (participantsWithPaymentData.length > 0) {
       const dollarsPerHour = participantsWithPaymentData.map(p => {
         const totalPaymentCents = p.submission!.totalPayment!
-        const timeTakenMinutes = p.submission!.timeTaken!
-        const dollarPerHour = (totalPaymentCents / 100) / (timeTakenMinutes / 60)
+        const timeTakenSeconds = p.submission!.timeTaken!
+        const dollarPerHour = (totalPaymentCents / 100) / (timeTakenSeconds / 3600)
         return dollarPerHour
       })
       averageDollarPerHour = dollarsPerHour.reduce((sum, rate) => sum + rate, 0) / dollarsPerHour.length
     }
 
-    const averageDollarPerEvaluation = demographicsSummary?.averageDollarPerEvaluation
+    // Calculate average dollar per evaluation from filtered participants
+    let averageDollarPerEvaluation = undefined
+    if (participantsWithPaymentData.length > 0) {
+      const dollarsPerEvaluation = participantsWithPaymentData.map(p => {
+        const totalPaymentCents = p.submission!.totalPayment!
+        const dollarPerEvaluation = totalPaymentCents / 100
+        return dollarPerEvaluation
+      })
+      averageDollarPerEvaluation = dollarsPerEvaluation.reduce((sum, rate) => sum + rate, 0) / dollarsPerEvaluation.length
+    }
 
     return {
       totalParticipants: participants.length,
       participantsWithDemographics: participantsWithDemographics.length,
+      experimentTotalParticipants: experimentParticipants.length,
       averageAge,
       averageDollarPerHour,
       averageDollarPerEvaluation,
@@ -372,7 +492,10 @@ export function EnhancedAnalyticsDashboard({
           </CardTitle>
           <CardDescription>
             Filter all analytics by participant demographics and experiment groups. 
-            Showing data for {participants.length} of {allParticipants.length} participants.
+            Showing data for {participants.length} of {allParticipants.length} participants
+            {selectedExperiment && (
+              <span> from experiment: <strong>{experiments.find(exp => exp.id === selectedExperiment)?.name || 'Unknown'}</strong></span>
+            )}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -381,7 +504,20 @@ export function EnhancedAnalyticsDashboard({
             <div className="space-y-2">
               <Label className="text-sm font-medium">Age Range</Label>
               <div className="space-y-2">
-                <div className="relative">
+                <div className="relative h-8">
+                  {/* Background track */}
+                  <div className="absolute top-3 w-full h-2 bg-gray-200 rounded-lg"></div>
+                  
+                  {/* Active range track */}
+                  <div 
+                    className="absolute top-3 h-2 bg-primary rounded-lg"
+                    style={{
+                      left: `${((filters.ageMin - 18) / (80 - 18)) * 100}%`,
+                      width: `${((filters.ageMax - filters.ageMin) / (80 - 18)) * 100}%`
+                    }}
+                  ></div>
+                  
+                  {/* Min range slider */}
                   <input
                     type="range"
                     min="18"
@@ -394,9 +530,10 @@ export function EnhancedAnalyticsDashboard({
                         ageMin: Math.min(newMin, prev.ageMax - 1)
                       }))
                     }}
-                    className="absolute w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    style={{ zIndex: 1 }}
+                    className="absolute w-full bg-transparent appearance-none cursor-pointer range-slider-thumb range-slider-min"
                   />
+                  
+                  {/* Max range slider */}
                   <input
                     type="range"
                     min="18"
@@ -409,8 +546,7 @@ export function EnhancedAnalyticsDashboard({
                         ageMax: Math.max(newMax, prev.ageMin + 1)
                       }))
                     }}
-                    className="absolute w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    style={{ zIndex: 2 }}
+                    className="absolute w-full bg-transparent appearance-none cursor-pointer range-slider-thumb range-slider-max"
                   />
                 </div>
                 <div className="flex justify-between items-center pt-2">
@@ -463,10 +599,13 @@ export function EnhancedAnalyticsDashboard({
                   <SelectValue placeholder="Select group" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Groups</SelectItem>
-                  {availableGroups.map(group => (
-                    <SelectItem key={group} value={group}>{group}</SelectItem>
-                  ))}
+                  {availableGroups.length > 0 ? (
+                    availableGroups.map(group => (
+                      <SelectItem key={group} value={group}>{group}</SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-groups" disabled>No groups available</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -474,19 +613,22 @@ export function EnhancedAnalyticsDashboard({
             {/* Specific Experiment Filter */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Specific Experiment</Label>
-              <Select value={selectedExperiment || 'all'} onValueChange={(value) => onExperimentChange?.(value === 'all' ? null : value)}>
+              <Select value={selectedExperiment || ''} onValueChange={(value) => onExperimentChange?.(value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select experiment" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Experiments</SelectItem>
-                  {experiments
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                    .map(experiment => (
-                      <SelectItem key={experiment.id} value={experiment.id}>
-                        {experiment.name} {experiment.prolificStudyId && '(Prolific)'}
-                      </SelectItem>
-                    ))}
+                  {experiments.length > 0 ? (
+                    experiments
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                      .map(experiment => (
+                        <SelectItem key={experiment.id} value={experiment.id}>
+                          {experiment.name} {experiment.prolificStudyId && '(Prolific)'}
+                        </SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="no-experiments" disabled>No experiments available</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -513,13 +655,15 @@ export function EnhancedAnalyticsDashboard({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Filtered Participants</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                {selectedExperiment ? 'Experiment Participants' : 'Filtered Participants'}
+              </CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{filteredSummary.totalParticipants}</div>
               <p className="text-xs text-muted-foreground">
-                {Math.round((filteredSummary.totalParticipants / allParticipants.length) * 100)}% of total
+                {Math.round((filteredSummary.totalParticipants / filteredSummary.experimentTotalParticipants) * 100)}% of {selectedExperiment ? 'experiment total' : 'all participants'}
               </p>
             </CardContent>
           </Card>
@@ -534,7 +678,7 @@ export function EnhancedAnalyticsDashboard({
                 {filteredSummary.averageAge ? Math.round(filteredSummary.averageAge) : 'N/A'}
               </div>
               <p className="text-xs text-muted-foreground">
-                Years old
+                {selectedExperiment ? 'In this experiment' : 'Years old'}
               </p>
             </CardContent>
           </Card>
@@ -549,7 +693,7 @@ export function EnhancedAnalyticsDashboard({
                 {filteredSummary.averageDollarPerHour ? `$${filteredSummary.averageDollarPerHour.toFixed(2)}` : 'N/A'}
               </div>
               <p className="text-xs text-muted-foreground">
-                Per hour worked
+                {selectedExperiment ? 'For filtered participants' : 'Per hour worked'}
               </p>
             </CardContent>
           </Card>
@@ -564,18 +708,17 @@ export function EnhancedAnalyticsDashboard({
                 {filteredSummary.averageDollarPerEvaluation ? `$${filteredSummary.averageDollarPerEvaluation.toFixed(2)}` : 'N/A'}
               </div>
               <p className="text-xs text-muted-foreground">
-                Per evaluation
+                {selectedExperiment ? 'From filtered data' : 'Per evaluation'}
               </p>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Existing Model Performance Chart Component with Filtered Data */}
+      {/* Model Performance Chart Component with Filtered Data */}
       <ModelPerformanceChart 
         performance={filteredPerformance}
         loading={externalLoading}
-        experiments={experiments}
       />
     </div>
   )

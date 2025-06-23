@@ -208,6 +208,109 @@
       background-position: 0% 50%;
     }
   }
+
+  /* Range slider styles */
+  .range-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: all;
+    width: 100%;
+    height: 20px;
+    outline: none;
+  }
+  
+  .range-slider-thumb::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+    border: 3px solid hsl(var(--background));
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    pointer-events: all;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 10;
+  }
+  
+  .range-slider-thumb::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    border-width: 4px;
+  }
+  
+  .range-slider-thumb::-webkit-slider-thumb:active {
+    transform: scale(1.2);
+    z-index: 100;
+  }
+  
+  .range-slider-thumb::-moz-range-thumb {
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+    border: 3px solid hsl(var(--background));
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    pointer-events: all;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 10;
+  }
+  
+  .range-slider-thumb::-moz-range-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    border-width: 4px;
+  }
+  
+  .range-slider-thumb::-moz-range-thumb:active {
+    transform: scale(1.2);
+    z-index: 100;
+  }
+  
+  .range-slider-thumb::-ms-thumb {
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: hsl(var(--primary));
+    border: 3px solid hsl(var(--background));
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    pointer-events: all;
+    transition: all 0.2s ease;
+    position: relative;
+    z-index: 10;
+  }
+  
+  .range-slider-thumb::-ms-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    border-width: 4px;
+  }
+  
+  .range-slider-thumb::-ms-thumb:active {
+    transform: scale(1.2);
+    z-index: 100;
+  }
+
+  /* Special styling for the min slider to ensure it's clickable */
+  .range-slider-min::-webkit-slider-thumb {
+    z-index: 5;
+  }
+  
+  .range-slider-max::-webkit-slider-thumb {
+    z-index: 4;
+  }
+  
+  .range-slider-min:active::-webkit-slider-thumb,
+  .range-slider-min:focus::-webkit-slider-thumb {
+    z-index: 100 !important;
+  }
 }
 
 .loader {
