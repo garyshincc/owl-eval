@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import Papa from 'papaparse';
 
 const PROLIFIC_API_URL = 'https://api.prolific.com';
 const PROLIFIC_API_TOKEN = process.env.PROLIFIC_API_TOKEN;
@@ -16,27 +17,25 @@ export interface ProlificStudy {
 }
 
 export interface ProlificSubmission {
-  id: string;
-  participant_id: string;
-  status: string;
-  completed_at?: string;
-  started_at?: string;
-  study_code?: string;
-  reward?: number;
-  time_taken?: number;
-  is_complete?: boolean;
-  bonus_payments?: number[];
-  participant_info?: {
-    age?: number;
-    sex?: string;
-    nationality?: string;
-    language?: string;
-    country_of_birth?: string;
-    country_of_residence?: string;
-    fluent_languages?: string[];
-    employment_status?: string;
-    student_status?: string;
-  };
+  'Submission id': string;
+  'Participant id': string;
+  'Status': string;
+  'Completed at'?: string;
+  'Started at'?: string;
+  'Study code'?: string;
+  'Reward'?: string;
+  'Time taken'?: string;
+  'Is complete'?: string;
+  'Bonus payments'?: string;
+  'Age'?: string;
+  'Sex'?: string;
+  'Nationality'?: string;
+  'Language'?: string;
+  'Country of birth'?: string;
+  'Country of residence'?: string;
+  'Fluent languages'?: string;
+  'Employment status'?: string;
+  'Student status'?: string;
 }
 
 export interface CreateStudyRequest {
@@ -90,6 +89,24 @@ export class ProlificService {
 
     return response.json();
   }
+
+  private async makeCsvRequest(endpoint: string, options: RequestInit = {}): Promise<string> {
+    const response = await fetch(`${PROLIFIC_API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        Authorization: `Token ${this.apiToken}`,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text(); // still text, could be an HTML error page
+      throw new Error(`Prolific API error (${response.status}): ${errorText}`);
+    }
+
+    return response.text(); // returns raw CSV text
+  }
+
 
   async createStudy(request: CreateStudyRequest): Promise<ProlificStudy> {
     // Validate experiment exists
@@ -165,7 +182,8 @@ export class ProlificService {
         prolificStudyId: prolificStudy.id,
         config: {
           ...experiment.config as object,
-          prolificCompletionCode: studyCompletionCode
+          prolificCompletionCode: studyCompletionCode,
+          evaluationsPerComparison: request.totalParticipants
         }
       }
     });
@@ -218,6 +236,22 @@ export class ProlificService {
   async getParticipant(participantId: string): Promise<any> {
     return this.makeRequest<any>(`/api/v1/participants/${participantId}/`);
   }
+  async getSubmissionsExport(
+    studyId: string
+  ): Promise<{ results: ProlificSubmission[] }> {
+    const csvText = await this.makeCsvRequest(`/api/v1/studies/${studyId}/export/`);
+
+    const { data, errors } = Papa.parse<ProlificSubmission>(csvText, {
+      header: true,
+      skipEmptyLines: true,
+    });
+
+    if (errors.length > 0) {
+      throw new Error(`CSV parse error: ${errors.map(e => e.message).join(', ')}`);
+    }
+
+    return { results: data };
+  }
 
   async processSubmissions(request: SubmissionActionRequest): Promise<{ submissionId: string; success: boolean; error?: any }[]> {
     const results = await Promise.all(
@@ -251,7 +285,7 @@ export class ProlificService {
   }> {
     const [study, submissionsData] = await Promise.all([
       this.getStudy(studyId),
-      this.getSubmissions(studyId)
+      this.getSubmissionsExport(studyId)
     ]);
 
     const submissions = submissionsData.results;
@@ -270,112 +304,129 @@ export class ProlificService {
     
     console.log(`Found ${submissions.length} submissions to sync`);
     
+    
     for (const submission of submissions) {
       try {
         // Skip if participant ID is missing
-        if (!submission.participant_id) {
-          console.log(`Skipping submission ${submission.id}: missing participant ID`);
+        if (!submission['Participant id']) {
+          console.log(`Skipping submission ${submission['Submission id']}: missing participant ID`);
           continue;
         }
 
-        // Check if demographics are embedded in submission data
-        let participantInfo = null;
-        if (submission.participant_info) {
-          participantInfo = submission.participant_info;
-          console.log(`📊 Found embedded demographics for participant ${submission.participant_id}:`, JSON.stringify(participantInfo, null, 2));
-        } else {
-          // Try to fetch participant demographics from Prolific (may fail due to permissions)
-          try {
-            participantInfo = await this.getParticipant(submission.participant_id);
-            console.log(`📊 Fetched demographics for participant ${submission.participant_id}:`, JSON.stringify(participantInfo, null, 2));
-          } catch (error) {
-            console.log(`⚠️  Could not fetch demographics for participant ${submission.participant_id}: ${error}`);
-            console.log(`ℹ️  Demographics may need to be configured in Prolific study settings to be included in submissions`);
-            
-            // Add sample demographics data for testing when real data isn't available
-            const sampleDemographics = [
-              {
-                age: 28,
-                sex: 'Female',
-                nationality: 'British',
-                country_of_residence: 'United Kingdom',
-                employment_status: 'Full-time employed',
-                student_status: 'Not a student',
-                fluent_languages: ['English']
-              },
-              {
-                age: 35,
-                sex: 'Male', 
-                nationality: 'American',
-                country_of_residence: 'United States',
-                employment_status: 'Self-employed',
-                student_status: 'Not a student',
-                fluent_languages: ['English', 'Spanish']
-              }
-            ];
-            
-            // Use sample data based on participant index
-            const participantIndex = submissions.findIndex(s => s.participant_id === submission.participant_id);
-            if (participantIndex >= 0 && participantIndex < sampleDemographics.length) {
-              participantInfo = sampleDemographics[participantIndex];
-              console.log(`📊 Using sample demographics for participant ${submission.participant_id}:`, JSON.stringify(participantInfo, null, 2));
-            }
-          }
-        }
+        const {
+          'Age': age,
+          'Sex': sex,
+          'Nationality': nationality,
+          'Language': language,
+          'Country of birth': country_of_birth,
+          'Country of residence': country_of_residence,
+          'Employment status': employment_status,
+          'Student status': student_status,
+        } = submission;
+
+        const participantInfo = {
+          age: age ? Number(age) : undefined,
+          sex,
+          nationality,
+          language,
+          country_of_birth,
+          country_of_residence,
+          employment_status,
+          student_status,
+        };
+
+        console.log(`Demographics for participant ${submission['Participant id']}:`, JSON.stringify(participantInfo, null, 2));
 
         // Upsert participant with demographic data
         await prisma.participant.upsert({
-          where: { prolificId: submission.participant_id },
-          update: {
-            status: submission.status.toLowerCase(),
-            metadata: {
-              // Store participant demographics separately from submission data
-              demographics: participantInfo || null,
-              prolificSubmissionId: submission.id,
-              submissionStatus: submission.status,
-              completedDateTime: submission.completed_at,
-              startedDateTime: submission.started_at,
-              studyCode: submission.study_code,
-              // Use study-level reward (more reliable) instead of buggy submission-level reward
-              reward: study.reward,
-              submissionReward: submission.reward, // Keep original for debugging
-              timeTaken: submission.time_taken,
-              isComplete: submission.is_complete,
-              bonusPayments: submission.bonus_payments,
-              totalPayment: (study.reward || 0) + (submission.bonus_payments?.reduce((a, b) => a + b, 0) || 0),
-              lastSyncedAt: new Date().toISOString()
+            where: { prolificId: submission['Participant id'] },
+            update: {
+              status: submission['Status'].toLowerCase(),
+              metadata: {
+                demographics: participantInfo || null,
+                prolificSubmissionId: submission['Submission id'],
+                submissionStatus: submission['Status'],
+                completedDateTime: submission['Completed at'],
+                startedDateTime: submission['Started at'],
+                studyCode: submission['Study code'],
+                reward: study.reward,
+                submissionReward: submission['Reward'] ? Number(submission['Reward']) : undefined,
+                timeTaken: submission['Time taken'] ? Number(submission['Time taken']) : undefined,
+                isComplete: submission['Is complete'] === 'true' || submission['Is complete'] === '1',
+                bonusPayments: submission['Bonus payments']
+                  ? (() => {
+                      try {
+                        const parsed = JSON.parse(submission['Bonus payments']);
+                        return Array.isArray(parsed) ? parsed.map(Number) : [];
+                      } catch {
+                        return [];
+                      }
+                    })()
+                  : [],
+                totalPayment:
+                  (study.reward || 0) +
+                  ((submission['Bonus payments']
+                    ? (() => {
+                        try {
+                          const parsed = JSON.parse(submission['Bonus payments']);
+                          return Array.isArray(parsed) ? parsed.reduce((a, b) => a + Number(b), 0) : 0;
+                        } catch {
+                          return 0;
+                        }
+                      })()
+                    : 0) || 0),
+                lastSyncedAt: new Date().toISOString()
+              }
+            },
+            create: {
+              prolificId: submission['Participant id'],
+              sessionId: `prolific_${submission['Participant id']}_${Date.now()}`,
+              experimentId: experiment.id,
+              status: submission['Status'].toLowerCase(),
+              assignedComparisons: [],
+              metadata: {
+                demographics: participantInfo || null,
+                prolificSubmissionId: submission['Submission id'],
+                submissionStatus: submission['Status'],
+                completedDateTime: submission['Completed at'],
+                startedDateTime: submission['Started at'],
+                studyCode: submission['Study code'],
+                reward: study.reward,
+                submissionReward: submission['Reward'] ? Number(submission['Reward']) : undefined,
+                timeTaken: submission['Time taken'] ? Number(submission['Time taken']) : undefined,
+                isComplete: submission['Is complete'] === 'true' || submission['Is complete'] === '1',
+                bonusPayments: submission['Bonus payments']
+                  ? (() => {
+                      try {
+                        const parsed = JSON.parse(submission['Bonus payments']);
+                        return Array.isArray(parsed) ? parsed.map(Number) : [];
+                      } catch {
+                        return [];
+                      }
+                    })()
+                  : [],
+                totalPayment:
+                  (study.reward || 0) +
+                  ((submission['Bonus payments']
+                    ? (() => {
+                        try {
+                          const parsed = JSON.parse(submission['Bonus payments']);
+                          return Array.isArray(parsed) ? parsed.reduce((a, b) => a + Number(b), 0) : 0;
+                        } catch {
+                          return 0;
+                        }
+                      })()
+                    : 0) || 0),
+                lastSyncedAt: new Date().toISOString()
+              }
             }
-          },
-          create: {
-            prolificId: submission.participant_id,
-            sessionId: `prolific_${submission.participant_id}_${Date.now()}`,
-            experimentId: experiment.id,
-            status: submission.status.toLowerCase(),
-            assignedComparisons: [],
-            metadata: {
-              // Store participant demographics separately from submission data
-              demographics: participantInfo || null,
-              prolificSubmissionId: submission.id,
-              submissionStatus: submission.status,
-              completedDateTime: submission.completed_at,
-              startedDateTime: submission.started_at,
-              studyCode: submission.study_code,
-              // Use study-level reward (more reliable) instead of buggy submission-level reward
-              reward: study.reward,
-              submissionReward: submission.reward, // Keep original for debugging
-              timeTaken: submission.time_taken,
-              isComplete: submission.is_complete,
-              bonusPayments: submission.bonus_payments,
-              totalPayment: (study.reward || 0) + (submission.bonus_payments?.reduce((a, b) => a + b, 0) || 0),
-              lastSyncedAt: new Date().toISOString()
-            }
-          }
-        });
+          });
+
 
         syncedParticipants++;
-        console.log(`✓ Synced participant ${submission.participant_id}`);
+        console.log(`✓ Synced participant ${submission['Participant id']}`);
       } catch (error) {
-        console.error(`Failed to sync participant ${submission.participant_id}:`, error);
+        console.error(`Failed to sync participant ${submission['Participant id']}:`, error);
       }
     }
 
@@ -385,7 +436,10 @@ export class ProlificService {
         where: { id: experiment.id },
         data: { 
           status: 'completed',
-          completedAt: new Date()
+          completedAt: new Date(),
+          config: {
+            ...experiment.config as object
+          }
         }
       });
       console.log(`✓ Updated experiment status to 'completed'`);
