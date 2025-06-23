@@ -109,14 +109,13 @@ export function ExperimentTable({
 
   const getProgressPercentage = (exp: Experiment) => {
     if (exp._count.comparisons === 0) return 0
-    // Use the actual experiment configuration or fallback to 5
-    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || 5
+    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
     const targetEvaluations = exp._count.comparisons * evaluationsPerComparison
     return Math.min((exp._count.evaluations / targetEvaluations) * 100, 100)
   }
 
   const getTargetEvaluations = (exp: Experiment) => {
-    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || 5
+    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
     return exp._count.comparisons * evaluationsPerComparison
   }
 

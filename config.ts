@@ -111,7 +111,7 @@ export function getConfig(): AppConfig {
     },
     
     evaluation: {
-      targetEvaluationsPerComparison: getNumberEnvVar('TARGET_EVALUATIONS_PER_COMPARISON', 5),
+      targetEvaluationsPerComparison: getNumberEnvVar('TARGET_EVALUATIONS_PER_COMPARISON', -1),
       maxVideoSizeMB: getNumberEnvVar('MAX_VIDEO_SIZE_MB', 100),
       supportedVideoFormats: getEnvVar('SUPPORTED_VIDEO_FORMATS', 'mp4,webm,mov').split(','),
     },

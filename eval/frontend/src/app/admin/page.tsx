@@ -447,6 +447,7 @@ export default function AdminPage() {
             <ProgressTracker 
               stats={stats}
               comparisonProgress={comparisonProgress}
+              experiments={experiments}
               loading={refreshing}
             />
           </TabsContent>

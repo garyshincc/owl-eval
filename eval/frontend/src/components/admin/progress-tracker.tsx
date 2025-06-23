@@ -29,13 +29,31 @@ interface ComparisonProgress {
   progressPercentage: number
 }
 
+interface Experiment {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  status: string
+  archived: boolean
+  archivedAt: string | null
+  group: string | null
+  prolificStudyId: string | null
+  config: any
+  createdAt: string
+  updatedAt: string
+  startedAt: string | null
+  completedAt: string | null
+}
+
 interface ProgressTrackerProps {
   stats: EvaluationStats | null
   comparisonProgress: ComparisonProgress[]
+  experiments?: Experiment[]
   loading?: boolean
 }
 
-export function ProgressTracker({ stats, comparisonProgress, loading }: ProgressTrackerProps) {
+export function ProgressTracker({ stats, comparisonProgress, experiments = [], loading }: ProgressTrackerProps) {
   if (loading) {
     return (
       <div className="space-y-6">
@@ -67,9 +85,10 @@ export function ProgressTracker({ stats, comparisonProgress, loading }: Progress
     return scenarioId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
-  const completedComparisons = comparisonProgress.filter(comp => comp.progressPercentage >= 100).length
-  const inProgressComparisons = comparisonProgress.filter(comp => comp.progressPercentage > 0 && comp.progressPercentage < 100).length
-  const notStartedComparisons = comparisonProgress.filter(comp => comp.progressPercentage === 0).length
+  // Count experiments by status instead of comparison progress
+  const completedExperiments = experiments.filter(exp => exp.status === 'completed').length
+  const inProgressExperiments = experiments.filter(exp => exp.status === 'active').length  
+  const notStartedExperiments = experiments.filter(exp => exp.status === 'draft').length
 
   return (
     <div className="space-y-6">
@@ -114,15 +133,15 @@ export function ProgressTracker({ stats, comparisonProgress, loading }: Progress
         </Card>
       )}
 
-      {/* Progress Summary */}
+      {/* Experiment Status Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-gradient-to-br from-secondary/10 to-secondary/20 border-secondary/20 glow">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-secondary">Completed</p>
-                <p className="text-2xl font-bold text-foreground">{completedComparisons}</p>
-                <p className="text-xs text-green-600">comparisons done</p>
+                <p className="text-2xl font-bold text-foreground">{completedExperiments}</p>
+                <p className="text-xs text-green-600">experiments done</p>
               </div>
               <CheckCircle2 className="h-8 w-8 text-secondary" />
             </div>
@@ -134,8 +153,8 @@ export function ProgressTracker({ stats, comparisonProgress, loading }: Progress
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-primary">In Progress</p>
-                <p className="text-2xl font-bold text-foreground">{inProgressComparisons}</p>
-                <p className="text-xs text-primary">actively evaluating</p>
+                <p className="text-2xl font-bold text-foreground">{inProgressExperiments}</p>
+                <p className="text-xs text-primary">actively running</p>
               </div>
               <Activity className="h-8 w-8 text-primary" />
             </div>
@@ -147,8 +166,8 @@ export function ProgressTracker({ stats, comparisonProgress, loading }: Progress
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Not Started</p>
-                <p className="text-2xl font-bold text-foreground">{notStartedComparisons}</p>
-                <p className="text-xs text-muted-foreground">awaiting evaluations</p>
+                <p className="text-2xl font-bold text-foreground">{notStartedExperiments}</p>
+                <p className="text-xs text-muted-foreground">draft experiments</p>
               </div>
               <Clock className="h-8 w-8 text-muted-foreground" />
             </div>

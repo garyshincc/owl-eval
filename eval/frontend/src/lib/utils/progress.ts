@@ -13,16 +13,15 @@ export interface ExperimentWithCounts {
 
 export function getProgressPercentage(experiment: ExperimentWithCounts): number {
   if (experiment._count.comparisons === 0) return 0;
-  
-  // Use the actual experiment configuration or fallback to 5
-  const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || 5;
+
+  const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || -1;
   const targetEvaluations = experiment._count.comparisons * evaluationsPerComparison;
   
   return Math.min((experiment._count.evaluations / targetEvaluations) * 100, 100);
 }
 
 export function getTargetEvaluations(experiment: ExperimentWithCounts): number {
-  const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || 5;
+  const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || -1;
   return experiment._count.comparisons * evaluationsPerComparison;
 }
 
