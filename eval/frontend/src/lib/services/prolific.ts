@@ -151,6 +151,55 @@ export class ProlificService {
 
     const externalStudyUrl = `${appUrl}/prolific?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_ID%}}&STUDY_ID={{%STUDY_ID%}}&experiment_id=${request.experimentId}`;
 
+    // Get demographics from experiment config
+    const demographics = (experiment.config as any)?.demographics;
+    
+    // Build Prolific filters based on demographics
+    const filters: any[] = [
+      {
+        filter_id: "approval_rate",
+        selected_range: {
+          lower: demographics?.approvalRate || 95,
+          upper: 100
+        }
+      }
+    ];
+
+    // Add age filter if specified
+    if (demographics?.ageMin || demographics?.ageMax) {
+      filters.push({
+        filter_id: "age",
+        selected_range: {
+          lower: demographics.ageMin || 18,
+          upper: demographics.ageMax || 100
+        }
+      });
+    }
+
+    // Add gender filter if specified
+    if (demographics?.gender && demographics.gender.length > 0) {
+      filters.push({
+        filter_id: "sex",
+        selected_values: demographics.gender
+      });
+    }
+
+    // Add country filter if specified
+    if (demographics?.country && demographics.country.length > 0) {
+      filters.push({
+        filter_id: "country_of_residence",
+        selected_values: demographics.country
+      });
+    }
+
+    // Add language filter if specified
+    if (demographics?.language && demographics.language.length > 0) {
+      filters.push({
+        filter_id: "fluent_languages",
+        selected_values: demographics.language
+      });
+    }
+
     const studyData = {
       name: request.title,
       description: request.description,
@@ -170,15 +219,7 @@ export class ProlificService {
       ],
       device_compatibility: ["desktop"],
       peripheral_requirements: ["audio"],
-      filters: [
-        {
-          filter_id: "approval_rate",
-          selected_range: {
-            lower: 95,
-            upper: 100
-          }
-        }
-      ]
+      filters: filters
     };
 
     const prolificStudy = await this.makeRequest<ProlificStudy>('/api/v1/studies/', {

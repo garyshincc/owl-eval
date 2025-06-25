@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { name, description, slug, group, comparisons, evaluationMode = 'comparison' } = await request.json();
+    const { name, description, slug, group, comparisons, evaluationMode = 'comparison', demographics } = await request.json();
 
     if (!name || !comparisons || !Array.isArray(comparisons)) {
       return NextResponse.json(
@@ -125,7 +125,8 @@ export async function POST(request: NextRequest) {
         models: evaluationMode === 'comparison' 
           ? Array.from(new Set([...comparisons.map(c => c.modelA), ...comparisons.map(c => c.modelB)]))
           : Array.from(new Set(comparisons.map(c => c.modelA))),
-        scenarios: Array.from(new Set(comparisons.map(c => c.scenarioId)))
+        scenarios: Array.from(new Set(comparisons.map(c => c.scenarioId))),
+        demographics: demographics || null
       },
       createdBy: authResult.user?.id || null,
     }
