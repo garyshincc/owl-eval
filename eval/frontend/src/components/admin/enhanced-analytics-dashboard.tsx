@@ -127,6 +127,7 @@ export function EnhancedAnalyticsDashboard({
     country: 'all',
     experimentGroup: selectedGroup || ''
   })
+  const [includeAnonymous, setIncludeAnonymous] = useState(true)
   const [availableCountries, setAvailableCountries] = useState<string[]>([])
   const [availableSexes, setAvailableSexes] = useState<string[]>([])
   const [availableGroups, setAvailableGroups] = useState<string[]>([])
@@ -137,7 +138,7 @@ export function EnhancedAnalyticsDashboard({
   const fetchDemographicsData = useCallback(async () => {
     try {
       setDemographicsLoading(true)
-      const demographicsResponse = await fetch('/api/demographics')
+      const demographicsResponse = await fetch(`/api/demographics?includeAnonymous=${includeAnonymous}`)
       if (!demographicsResponse.ok) {
         throw new Error('Failed to fetch demographics data')
       }
@@ -196,7 +197,7 @@ export function EnhancedAnalyticsDashboard({
     } finally {
       setDemographicsLoading(false)
     }
-  }, [experiments.length, selectedGroup]) // Remove filters dependencies to avoid infinite loops
+  }, [experiments.length, selectedGroup, includeAnonymous]) // Remove filters dependencies to avoid infinite loops
 
   // Apply local filters immediately (for participant count updates)
   const applyLocalFilters = useCallback(() => {
@@ -245,7 +246,8 @@ export function EnhancedAnalyticsDashboard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           filters,
-          selectedExperiment: selectedExperiment
+          selectedExperiment: selectedExperiment,
+          includeAnonymous: includeAnonymous
         })
       })
       if (performanceResponse.ok) {
@@ -256,7 +258,7 @@ export function EnhancedAnalyticsDashboard({
       console.error('Error fetching filtered performance data:', error)
       setFilteredPerformance([])
     }
-  }, [filters, selectedExperiment]) // Remove participants dependency
+  }, [filters, selectedExperiment, includeAnonymous]) // Remove participants dependency
 
   // Debounced version of performance data fetching
   const debouncedFetchPerformanceData = useCallback(() => {
@@ -289,7 +291,8 @@ export function EnhancedAnalyticsDashboard({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               filters,
-              selectedExperiment: selectedExperiment
+              selectedExperiment: selectedExperiment,
+              includeAnonymous: includeAnonymous
             })
           })
           if (performanceResponse.ok) {
@@ -303,7 +306,7 @@ export function EnhancedAnalyticsDashboard({
       }
       fetchData()
     }
-  }, [selectedExperiment, allParticipants.length])
+  }, [selectedExperiment, allParticipants.length, includeAnonymous])
 
   // Initial performance data load when component mounts
   useEffect(() => {
@@ -320,7 +323,8 @@ export function EnhancedAnalyticsDashboard({
               country: 'all',
               experimentGroup: selectedGroup || ''
             },
-            selectedExperiment: selectedExperiment
+            selectedExperiment: selectedExperiment,
+            includeAnonymous: includeAnonymous
           })
         })
         if (performanceResponse.ok) {
@@ -333,7 +337,7 @@ export function EnhancedAnalyticsDashboard({
     }
 
     loadInitialPerformance()
-  }, [selectedGroup, selectedExperiment])
+  }, [selectedGroup, selectedExperiment, includeAnonymous])
 
   // Update group filter when external selectedGroup changes
   useEffect(() => {
@@ -496,9 +500,43 @@ export function EnhancedAnalyticsDashboard({
             {selectedExperiment && (
               <span> from experiment: <strong>{experiments.find(exp => exp.id === selectedExperiment)?.name || 'Unknown'}</strong></span>
             )}.
+            {includeAnonymous ? ' (Including anonymous participants)' : ' (Excluding anonymous participants)'}
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Participant Type Toggle */}
+          <div className="mb-6 p-4 bg-muted/30 rounded-lg border">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Participant Data</Label>
+                <p className="text-xs text-muted-foreground">
+                  {includeAnonymous 
+                    ? 'Including all participants (anonymous sessions and Prolific users)'
+                    : 'Only Prolific participants (excluding anonymous test sessions)'
+                  }
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant={!includeAnonymous ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIncludeAnonymous(false)}
+                  className="text-xs"
+                >
+                  Prolific Only
+                </Button>
+                <Button
+                  variant={includeAnonymous ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIncludeAnonymous(true)}
+                  className="text-xs"
+                >
+                  All
+                </Button>
+              </div>
+            </div>
+          </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             {/* Age Range Filter */}
             <div className="space-y-2">

@@ -3,15 +3,34 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    // Fetch participants with their demographics and experiment data (excluding anonymous)
-    const participants = await prisma.participant.findMany({
-      where: {
-        id: {
-          not: {
-            startsWith: 'anon-session-'
+    const { searchParams } = new URL(request.url)
+    const includeAnonymous = searchParams.get('includeAnonymous') === 'true'
+    
+    // Build where clause based on whether to include anonymous participants
+    const whereClause = includeAnonymous ? {
+      status: {
+        not: 'returned'  // Always exclude returned participants
+      }
+    } : {
+      AND: [
+        {
+          id: {
+            not: {
+              startsWith: 'anon-session-'
+            }
+          }
+        },
+        {
+          status: {
+            not: 'returned'  // Always exclude returned participants
           }
         }
-      },
+      ]
+    }
+    
+    // Fetch participants with their demographics and experiment data
+    const participants = await prisma.participant.findMany({
+      where: whereClause,
       include: {
         experiment: {
           select: {

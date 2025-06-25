@@ -3,51 +3,76 @@ import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Get evaluation counts by status (excluding anonymous participants)
-    const [completed, draft, total] = await Promise.all([
-      prisma.evaluation.count({
-        where: { 
-          status: 'completed',
-          participant: {
+    // Get filters from URL params
+    const { searchParams } = new URL(request.url)
+    const includeAnonymous = searchParams.get('includeAnonymous') === 'true'
+    
+    // Build participant filter based on anonymous inclusion
+    const participantFilter = includeAnonymous ? {
+      participant: {
+        status: {
+          not: 'returned'  // Always exclude returned participants
+        }
+      }
+    } : {
+      participant: {
+        AND: [
+          {
             id: {
               not: {
                 startsWith: 'anon-session-'
               }
             }
+          },
+          {
+            status: {
+              not: 'returned'  // Always exclude returned participants
+            }
           }
+        ]
+      }
+    }
+    
+    // Get evaluation counts by status for both evaluation types
+    const [completed, draft, total, singleVideoCompleted, singleVideoDraft, singleVideoTotal] = await Promise.all([
+      prisma.evaluation.count({
+        where: { 
+          status: 'completed',
+          ...participantFilter
         }
       }),
       prisma.evaluation.count({
         where: { 
           status: 'draft',
-          participant: {
-            id: {
-              not: {
-                startsWith: 'anon-session-'
-              }
-            }
-          }
+          ...participantFilter
         }
       }),
       prisma.evaluation.count({
-        where: {
-          participant: {
-            id: {
-              not: {
-                startsWith: 'anon-session-'
-              }
-            }
-          }
+        where: participantFilter
+      }),
+      prisma.singleVideoEvaluation.count({
+        where: { 
+          status: 'completed',
+          ...participantFilter
         }
+      }),
+      prisma.singleVideoEvaluation.count({
+        where: { 
+          status: 'draft',
+          ...participantFilter
+        }
+      }),
+      prisma.singleVideoEvaluation.count({
+        where: participantFilter
       })
     ])
 
     return NextResponse.json({
-      completed,
-      draft,
-      total,
+      completed: completed + singleVideoCompleted,
+      draft: draft + singleVideoDraft,
+      total: total + singleVideoTotal,
       active: 0 // We don't track "active" evaluations, only draft and completed
     })
   } catch (error) {

@@ -4,17 +4,33 @@ import { Prisma } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
   try {
-    const { filters, selectedExperiment } = await request.json()
+    const { filters, selectedExperiment, includeAnonymous } = await request.json()
     
-    // First, get participants that match the demographic filters (excluding anonymous)
-    const participants = await prisma.participant.findMany({
-      where: {
-        id: {
-          not: {
-            startsWith: 'anon-session-'
+    // Build where clause based on whether to include anonymous participants
+    const whereClause = includeAnonymous ? {
+      status: {
+        not: 'returned'  // Always exclude returned participants
+      }
+    } : {
+      AND: [
+        {
+          id: {
+            not: {
+              startsWith: 'anon-session-'
+            }
+          }
+        },
+        {
+          status: {
+            not: 'returned'  // Always exclude returned participants
           }
         }
-      },
+      ]
+    }
+    
+    // First, get participants that match the demographic filters
+    const participants = await prisma.participant.findMany({
+      where: whereClause,
       include: {
         experiment: {
           select: {
@@ -151,11 +167,21 @@ export async function POST(request: NextRequest) {
       for (const evaluation of comparisonEvaluations) {
         // If we queried by experiment directly, we need to apply demographic filters here
         if (selectedExperiment && evaluation.participant) {
+          // Check for anonymous participants first
+          if (!includeAnonymous && evaluation.participant.id.startsWith('anon-session-')) {
+            continue
+          }
+          
+          // Check for returned participants - they should be excluded from counts
+          if (evaluation.participant.status === 'returned') {
+            continue
+          }
+          
           const participantMetadata = evaluation.participant.metadata as any
           const demographics = participantMetadata?.demographics
           
           // Apply demographic filters
-          if (demographics) {
+          if (demographics && demographics.sex !== 'CONSENT_REVOKED') {
             // Age filter
             if (demographics.age && (demographics.age < filters.ageMin || demographics.age > filters.ageMax)) {
               continue
@@ -169,7 +195,7 @@ export async function POST(request: NextRequest) {
               continue
             }
           } else if (filters.sex !== 'all' || filters.country !== 'all') {
-            // If demographic filters are set but participant has no demographics, skip
+            // If demographic filters are set but participant has no demographics or revoked consent, skip
             continue
           }
         }
@@ -290,12 +316,16 @@ export async function POST(request: NextRequest) {
     if (evaluationModes.includes('single_video')) {
       // Build single video evaluation query
       let singleVideoWhere: any = {
-        status: 'completed'
+        status: 'completed',
+        dimensionScores: { not: null }
       }
 
       if (selectedExperiment) {
-        // If specific experiment selected, filter by experiment directly
-        singleVideoWhere.experimentId = selectedExperiment
+        // If specific experiment selected, filter by experiment through videoTask
+        singleVideoWhere.videoTask = {
+          experimentId: selectedExperiment
+        }
+        // Don't pre-filter by participant when using selectedExperiment - we'll filter manually later
       } else {
         // Otherwise filter by participant IDs as before
         singleVideoWhere.participantId = { in: finalFilteredParticipants.map(p => p.id) }
@@ -320,7 +350,6 @@ export async function POST(request: NextRequest) {
         }
       })
 
-
       // Process single video evaluations
       const singleVideoStatsMap: Record<string, {
         totalScore: number;
@@ -333,11 +362,21 @@ export async function POST(request: NextRequest) {
       for (const evaluation of singleVideoEvaluations) {
         // If we queried by experiment directly, we need to apply demographic filters here
         if (selectedExperiment && evaluation.participant) {
+          // Check for anonymous participants first
+          if (!includeAnonymous && evaluation.participant.id.startsWith('anon-session-')) {
+            continue
+          }
+          
+          // Check for returned participants - they should be excluded from counts
+          if (evaluation.participant.status === 'returned') {
+            continue
+          }
+          
           const participantMetadata = evaluation.participant.metadata as any
           const demographics = participantMetadata?.demographics
           
           // Apply demographic filters
-          if (demographics) {
+          if (demographics && demographics.sex !== 'CONSENT_REVOKED') {
             // Age filter
             if (demographics.age && (demographics.age < filters.ageMin || demographics.age > filters.ageMax)) {
               continue
@@ -350,8 +389,8 @@ export async function POST(request: NextRequest) {
             if (filters.country !== 'all' && demographics.country_of_residence !== filters.country) {
               continue
             }
-          } else if (filters.sex !== 'all' || filters.country !== 'all' || demographics?.age) {
-            // If demographic filters are set but participant has no demographics, skip
+          } else if (filters.sex !== 'all' || filters.country !== 'all') {
+            // If demographic filters are set but participant has no demographics or revoked consent, skip
             continue
           }
         }

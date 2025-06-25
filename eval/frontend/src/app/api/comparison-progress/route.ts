@@ -23,11 +23,20 @@ export async function GET() {
               where: {
                 status: 'completed',
                 participant: {
-                  id: {
-                    not: {
-                      startsWith: 'anon-session-'
+                  AND: [
+                    {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    },
+                    {
+                      status: {
+                        not: 'returned'  // Always exclude returned participants
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }

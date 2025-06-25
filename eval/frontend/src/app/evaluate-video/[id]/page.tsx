@@ -134,13 +134,48 @@ export default function EvaluateVideoPage() {
 
   const fetchVideoTask = useCallback(async () => {
     try {
-      const response = await fetch(`/api/video-tasks/${params.id}`)
+      let response = await fetch(`/api/video-tasks/${params.id}`)
+      let data
       
-      if (!response.ok) {
+      if (!response.ok && response.status === 404) {
+        // If not found, try to interpret as experiment slug
+        const experimentsResponse = await fetch('/api/experiments')
+        if (experimentsResponse.ok) {
+          const experiments = await experimentsResponse.json()
+          const experiment = experiments.find((exp: any) => exp.slug === params.id)
+          
+          if (experiment && experiment.evaluationMode === 'single_video') {
+            // Get video tasks for this experiment
+            const videoTasksResponse = await fetch(`/api/video-tasks?experimentId=${experiment.id}`)
+            if (videoTasksResponse.ok) {
+              const videoTasksList = await videoTasksResponse.json()
+              if (videoTasksList.length > 0) {
+                // Get the first available video task (you might want to implement more sophisticated logic here)
+                const firstVideoTaskId = videoTasksList[0].video_task_id
+                response = await fetch(`/api/video-tasks/${firstVideoTaskId}`)
+                if (response.ok) {
+                  data = await response.json()
+                } else {
+                  throw new Error('Failed to fetch video task')
+                }
+              } else {
+                throw new Error('No video tasks found for this experiment')
+              }
+            } else {
+              throw new Error('Failed to fetch video tasks for experiment')
+            }
+          } else {
+            throw new Error('Experiment not found or not a single video experiment')
+          }
+        } else {
+          throw new Error('Failed to fetch experiments')
+        }
+      } else if (!response.ok) {
         throw new Error('Failed to fetch video task')
+      } else {
+        data = await response.json()
       }
       
-      const data = await response.json()
       setVideoTask(data)
       
       // Load any existing draft

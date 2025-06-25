@@ -12,22 +12,40 @@ export async function GET() {
             comparisons: true,
             participants: {
               where: {
-                id: {
-                  not: {
-                    startsWith: 'anon-session-'
+                AND: [
+                  {
+                    id: {
+                      not: {
+                        startsWith: 'anon-session-'
+                      }
+                    }
+                  },
+                  {
+                    status: {
+                      not: 'returned'  // Always exclude returned participants
+                    }
                   }
-                }
+                ]
               }
             },
             evaluations: {
               where: {
                 status: 'completed',
                 participant: {
-                  id: {
-                    not: {
-                      startsWith: 'anon-session-'
+                  AND: [
+                    {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    },
+                    {
+                      status: {
+                        not: 'returned'  // Always exclude returned participants
+                      }
                     }
-                  }
+                  ]
                 }
               }
             },
@@ -80,56 +98,91 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create experiment with comparisons
-    const experiment = await prisma.experiment.create({
-      data: {
-        name,
-        description: description || null,
-        slug: slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-        group: group || null,
-        status: 'draft',
-        evaluationMode: evaluationMode,
-        config: {
-          models: evaluationMode === 'comparison' 
-            ? Array.from(new Set([...comparisons.map(c => c.modelA), ...comparisons.map(c => c.modelB)]))
-            : Array.from(new Set(comparisons.map(c => c.modelA))),
-          scenarios: Array.from(new Set(comparisons.map(c => c.scenarioId)))
-        },
-        createdBy: authResult.user?.id || null,
-        comparisons: {
-          create: comparisons.map(comp => ({
-            scenarioId: comp.scenarioId,
-            modelA: comp.modelA,
-            modelB: comp.modelB,
-            videoAPath: comp.videoAUrl,
-            videoBPath: comp.videoBUrl,
-            metadata: comp.metadata || {}
-          }))
-        }
+    // Create experiment with either comparisons or video tasks based on evaluation mode
+    const experimentData: any = {
+      name,
+      description: description || null,
+      slug: slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+      group: group || null,
+      status: 'draft',
+      evaluationMode: evaluationMode,
+      config: {
+        models: evaluationMode === 'comparison' 
+          ? Array.from(new Set([...comparisons.map(c => c.modelA), ...comparisons.map(c => c.modelB)]))
+          : Array.from(new Set(comparisons.map(c => c.modelA))),
+        scenarios: Array.from(new Set(comparisons.map(c => c.scenarioId)))
       },
+      createdBy: authResult.user?.id || null,
+    }
+
+    if (evaluationMode === 'single_video') {
+      // Create video tasks for single video evaluation
+      experimentData.videoTasks = {
+        create: comparisons.map(comp => ({
+          scenarioId: comp.scenarioId,
+          modelName: comp.modelA,
+          videoPath: comp.videoAUrl,
+          metadata: comp.metadata || {}
+        }))
+      }
+    } else {
+      // Create comparisons for comparison evaluation
+      experimentData.comparisons = {
+        create: comparisons.map(comp => ({
+          scenarioId: comp.scenarioId,
+          modelA: comp.modelA,
+          modelB: comp.modelB,
+          videoAPath: comp.videoAUrl,
+          videoBPath: comp.videoBUrl,
+          metadata: comp.metadata || {}
+        }))
+      }
+    }
+
+    const experiment = await prisma.experiment.create({
+      data: experimentData,
       include: {
         comparisons: true,
+        videoTasks: true,
         _count: {
           select: {
             comparisons: true,
             participants: {
               where: {
-                id: {
-                  not: {
-                    startsWith: 'anon-session-'
+                AND: [
+                  {
+                    id: {
+                      not: {
+                        startsWith: 'anon-session-'
+                      }
+                    }
+                  },
+                  {
+                    status: {
+                      not: 'returned'  // Always exclude returned participants
+                    }
                   }
-                }
+                ]
               }
             },
             evaluations: {
               where: {
                 status: 'completed',
                 participant: {
-                  id: {
-                    not: {
-                      startsWith: 'anon-session-'
+                  AND: [
+                    {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    },
+                    {
+                      status: {
+                        not: 'returned'  // Always exclude returned participants
+                      }
                     }
-                  }
+                  ]
                 }
               }
             },

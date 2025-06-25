@@ -146,6 +146,18 @@ export async function DELETE(
                 }
               }
             },
+            singleVideoEvals: {
+              where: {
+                status: 'completed',
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -156,7 +168,8 @@ export async function DELETE(
     }
 
     // Check if experiment has evaluations and is not archived
-    if (experiment._count.evaluations > 0 && !experiment.archived) {
+    const totalEvaluations = experiment._count.evaluations + (experiment._count.singleVideoEvals || 0);
+    if (totalEvaluations > 0 && !experiment.archived) {
       return NextResponse.json(
         { error: 'Cannot delete experiment with existing evaluations. Archive it first.' },
         { status: 400 }
@@ -169,17 +182,27 @@ export async function DELETE(
       where: { experimentId: id }
     });
 
-    // 2. Delete comparisons (they reference experiment)
+    // 2. Delete single video evaluations (they reference video tasks and experiment)
+    await prisma.singleVideoEvaluation.deleteMany({
+      where: { experimentId: id }
+    });
+
+    // 3. Delete comparisons (they reference experiment)
     await prisma.comparison.deleteMany({
       where: { experimentId: id }
     });
 
-    // 3. Delete participants (they reference experiment)
+    // 4. Delete video tasks (they reference experiment)
+    await prisma.videoTask.deleteMany({
+      where: { experimentId: id }
+    });
+
+    // 5. Delete participants (they reference experiment)
     await prisma.participant.deleteMany({
       where: { experimentId: id }
     });
 
-    // 4. Finally delete the experiment
+    // 6. Finally delete the experiment
     await prisma.experiment.delete({
       where: { id }
     });

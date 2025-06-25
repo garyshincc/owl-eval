@@ -114,7 +114,10 @@ export class ProlificService {
       where: { id: request.experimentId },
       include: {
         _count: {
-          select: { comparisons: true }
+          select: { 
+            comparisons: true,
+            videoTasks: true
+          }
         }
       }
     });
@@ -134,8 +137,16 @@ export class ProlificService {
       appUrl = appUrl.replace('http://', 'https://');
     }
 
-    // Calculate estimated time
-    const estimatedCompletionTime = Math.ceil(experiment._count.comparisons * 2);
+    // Calculate estimated time based on evaluation mode
+    let estimatedCompletionTime: number;
+    if (experiment.evaluationMode === 'single_video') {
+      // For single video: estimate 1 minute per video task
+      const videoTaskCount = experiment._count.videoTasks || 1;
+      estimatedCompletionTime = Math.max(1, Math.ceil(videoTaskCount * 1));
+    } else {
+      // For comparison: estimate 2 minutes per comparison
+      estimatedCompletionTime = Math.max(1, Math.ceil(experiment._count.comparisons * 2));
+    }
     const studyCompletionCode = generateCompletionCode();
 
     const externalStudyUrl = `${appUrl}/prolific?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_ID%}}&STUDY_ID={{%STUDY_ID%}}&experiment_id=${request.experimentId}`;
