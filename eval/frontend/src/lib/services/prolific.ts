@@ -175,7 +175,7 @@ export class ProlificService {
       body: JSON.stringify(studyData),
     });
 
-    // Update experiment with Prolific study ID and completion code
+    // Update experiment with Prolific study ID, completion code, and initial status
     await prisma.experiment.update({
       where: { id: request.experimentId },
       data: { 
@@ -183,7 +183,8 @@ export class ProlificService {
         config: {
           ...experiment.config as object,
           prolificCompletionCode: studyCompletionCode,
-          evaluationsPerComparison: request.totalParticipants
+          evaluationsPerComparison: request.totalParticipants,
+          prolificStatus: prolificStudy.status // Track initial Prolific status (typically UNPUBLISHED)
         }
       }
     });
@@ -223,10 +224,30 @@ export class ProlificService {
         break;
     }
 
-    return this.makeRequest<ProlificStudy>(endpoint, {
+    const updatedStudy = await this.makeRequest<ProlificStudy>(endpoint, {
       method,
       body: JSON.stringify(requestBody),
     });
+
+    // Update local experiment config with new Prolific status
+    const experiment = await prisma.experiment.findFirst({
+      where: { prolificStudyId: studyId }
+    });
+
+    if (experiment) {
+      await prisma.experiment.update({
+        where: { id: experiment.id },
+        data: {
+          config: {
+            ...experiment.config as object,
+            prolificStatus: updatedStudy.status
+          }
+        }
+      });
+      console.log(`✓ Updated local experiment config with Prolific status: ${updatedStudy.status}`);
+    }
+
+    return updatedStudy;
   }
 
   async getSubmissions(studyId: string): Promise<{ results: ProlificSubmission[] }> {
@@ -430,19 +451,61 @@ export class ProlificService {
       }
     }
 
-    // Auto-update experiment status based on study completion
-    if (study.status === 'COMPLETED') {
+    // Auto-update experiment status based on Prolific study status
+    let experimentStatus = experiment.status;
+    let statusData: any = {
+      config: {
+        ...experiment.config as object,
+        prolificStatus: study.status
+      }
+    };
+
+    switch (study.status) {
+      case 'UNPUBLISHED':
+      case 'DRAFT':
+        // If study exists but is unpublished, keep it as draft only if it was never published
+        // If it was previously active but now unpublished, that's unusual - keep current status
+        if (experiment.status === 'draft') {
+          experimentStatus = 'draft';
+        }
+        break;
+      case 'ACTIVE':
+      case 'RUNNING':
+        experimentStatus = 'active';
+        if (!experiment.startedAt) {
+          statusData.startedAt = new Date();
+        }
+        break;
+      case 'PAUSED':
+        experimentStatus = 'paused';
+        break;
+      case 'COMPLETED':
+        experimentStatus = 'completed';
+        statusData.completedAt = new Date();
+        break;
+      case 'STOPPED':
+        experimentStatus = 'paused';
+        break;
+      default:
+        // Keep current status for unknown Prolific statuses
+        console.log(`Unknown Prolific status: ${study.status}, keeping experiment status as ${experiment.status}`);
+        break;
+    }
+
+    if (experimentStatus !== experiment.status) {
+      statusData.status = experimentStatus;
       await prisma.experiment.update({
         where: { id: experiment.id },
-        data: { 
-          status: 'completed',
-          completedAt: new Date(),
-          config: {
-            ...experiment.config as object
-          }
-        }
+        data: statusData
       });
-      console.log(`✓ Updated experiment status to 'completed'`);
+      console.log(`✓ Updated experiment status from '${experiment.status}' to '${experimentStatus}' (Prolific: ${study.status})`);
+    } else {
+      // Still update config to track Prolific status even if experiment status doesn't change
+      await prisma.experiment.update({
+        where: { id: experiment.id },
+        data: statusData
+      });
+      console.log(`✓ Synced Prolific status '${study.status}' (experiment status unchanged)`);
     }
 
     return {
