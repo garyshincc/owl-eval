@@ -10,10 +10,25 @@ export async function GET() {
         _count: {
           select: {
             comparisons: true,
-            participants: true,
+            participants: {
+              where: {
+                id: {
+                  not: {
+                    startsWith: 'anon-session-'
+                  }
+                }
+              }
+            },
             evaluations: {
               where: {
-                status: 'completed'
+                status: 'completed',
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
               }
             },
           }
@@ -84,10 +99,25 @@ export async function POST(request: NextRequest) {
         _count: {
           select: {
             comparisons: true,
-            participants: true,
+            participants: {
+              where: {
+                id: {
+                  not: {
+                    startsWith: 'anon-session-'
+                  }
+                }
+              }
+            },
             evaluations: {
               where: {
-                status: 'completed'
+                status: 'completed',
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
               }
             },
           }

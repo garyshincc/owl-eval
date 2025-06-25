@@ -3,8 +3,15 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    // Fetch participants with their demographics and experiment data
+    // Fetch participants with their demographics and experiment data (excluding anonymous)
     const participants = await prisma.participant.findMany({
+      where: {
+        id: {
+          not: {
+            startsWith: 'anon-session-'
+          }
+        }
+      },
       include: {
         experiment: {
           select: {

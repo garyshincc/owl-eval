@@ -528,7 +528,15 @@ export class ProlificService {
         createdAt: true,
         _count: {
           select: {
-            participants: true,
+            participants: {
+              where: {
+                id: {
+                  not: {
+                    startsWith: 'anon-session-'
+                  }
+                }
+              }
+            },
             evaluations: true,
             comparisons: true
           }

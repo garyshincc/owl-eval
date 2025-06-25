@@ -21,7 +21,14 @@ export async function GET() {
           select: {
             evaluations: {
               where: {
-                status: 'completed'
+                status: 'completed',
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
               }
             }
           }

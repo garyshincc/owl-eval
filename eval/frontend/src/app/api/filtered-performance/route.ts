@@ -6,8 +6,15 @@ export async function POST(request: NextRequest) {
   try {
     const { filters, selectedExperiment } = await request.json()
     
-    // First, get participants that match the demographic filters
+    // First, get participants that match the demographic filters (excluding anonymous)
     const participants = await prisma.participant.findMany({
+      where: {
+        id: {
+          not: {
+            startsWith: 'anon-session-'
+          }
+        }
+      },
       include: {
         experiment: {
           select: {

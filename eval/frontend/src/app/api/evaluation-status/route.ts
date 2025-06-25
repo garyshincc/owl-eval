@@ -5,15 +5,43 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    // Get evaluation counts by status
+    // Get evaluation counts by status (excluding anonymous participants)
     const [completed, draft, total] = await Promise.all([
       prisma.evaluation.count({
-        where: { status: 'completed' }
+        where: { 
+          status: 'completed',
+          participant: {
+            id: {
+              not: {
+                startsWith: 'anon-session-'
+              }
+            }
+          }
+        }
       }),
       prisma.evaluation.count({
-        where: { status: 'draft' }
+        where: { 
+          status: 'draft',
+          participant: {
+            id: {
+              not: {
+                startsWith: 'anon-session-'
+              }
+            }
+          }
+        }
       }),
-      prisma.evaluation.count()
+      prisma.evaluation.count({
+        where: {
+          participant: {
+            id: {
+              not: {
+                startsWith: 'anon-session-'
+              }
+            }
+          }
+        }
+      })
     ])
 
     return NextResponse.json({
