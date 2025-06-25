@@ -158,30 +158,29 @@ export async function POST(request: Request) {
     
     // Check if there are more comparisons available in this experiment
     let nextComparison = null;
-    if (!data.participant_id || data.participant_id === 'anonymous') {
-      // Get all comparisons in this experiment
-      const allComparisons = await prisma.comparison.findMany({
-        where: { 
-          experimentId: actualExperimentId
-        },
-        orderBy: { createdAt: 'asc' }
-      });
+    
+    // Get all comparisons in this experiment
+    const allComparisons = await prisma.comparison.findMany({
+      where: { 
+        experimentId: actualExperimentId
+      },
+      orderBy: { createdAt: 'asc' }
+    });
 
-      // Find comparisons that haven't been evaluated by this user
-      for (const comp of allComparisons) {
-        const existingEval = await prisma.evaluation.findUnique({
-          where: {
-            comparisonId_participantId: {
-              comparisonId: comp.id,
-              participantId: actualParticipantId
-            }
+    // Find comparisons that haven't been evaluated by this user
+    for (const comp of allComparisons) {
+      const existingEval = await prisma.evaluation.findUnique({
+        where: {
+          comparisonId_participantId: {
+            comparisonId: comp.id,
+            participantId: actualParticipantId
           }
-        });
-        
-        if (!existingEval || existingEval.status !== 'completed') {
-          nextComparison = comp.id;
-          break;
         }
+      });
+      
+      if (!existingEval || existingEval.status !== 'completed') {
+        nextComparison = comp.id;
+        break;
       }
     }
     

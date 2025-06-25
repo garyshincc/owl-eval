@@ -17,6 +17,18 @@ export async function GET(request: Request) {
       }
     }
     
+    // Build where clause for evaluations that excludes anonymous participants
+    const evaluationWhereClause = {
+      ...whereClause,
+      participant: {
+        id: {
+          not: {
+            startsWith: 'anon-session-'
+          }
+        }
+      }
+    }
+    
     // Get total counts - only completed evaluations from non-archived experiments
     const [totalComparisons, totalEvaluations] = await Promise.all([
       prisma.comparison.count({
@@ -25,7 +37,7 @@ export async function GET(request: Request) {
       prisma.evaluation.count({
         where: {
           status: 'completed',
-          ...whereClause
+          ...evaluationWhereClause
         }
       })
     ])
@@ -40,7 +52,14 @@ export async function GET(request: Request) {
           select: {
             evaluations: {
               where: {
-                status: 'completed'
+                status: 'completed',
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
               }
             }
           }

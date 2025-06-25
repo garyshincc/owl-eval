@@ -211,10 +211,19 @@ def status():
     type=click.Choice(["table", "json", "csv"]),
     help="Output format",
 )
-def run_query(query, format):
-    """Run a custom SQL query."""
+@click.option(
+    "--no-commit",
+    is_flag=True,
+    help="Don't auto-commit the transaction (for testing)",
+)
+def run_query(query, format, no_commit):
+    """Run a custom SQL query with auto-commit."""
     try:
         conn, RealDictCursor = _get_db_connection()
+        
+        # Set autocommit for write operations unless --no-commit is specified
+        if not no_commit:
+            conn.autocommit = True
 
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(query)
@@ -242,9 +251,18 @@ def run_query(query, format):
                     data = [[r[h] for h in headers] for r in results]
                     click.echo(tabulate(data, headers=headers, tablefmt="grid"))
             else:  # INSERT/UPDATE/DELETE
-                click.echo(f"✅ Query executed. Rows affected: {cursor.rowcount}")
+                if no_commit:
+                    click.echo(f"✅ Query executed. Rows affected: {cursor.rowcount} (NOT COMMITTED - use COMMIT; to persist)")
+                else:
+                    click.echo(f"✅ Query executed and committed. Rows affected: {cursor.rowcount}")
 
         conn.close()
 
     except Exception as e:
         click.echo(f"❌ Query failed: {e}")
+        try:
+            if not no_commit and not conn.autocommit:
+                conn.rollback()
+                click.echo("Transaction rolled back")
+        except:
+            pass

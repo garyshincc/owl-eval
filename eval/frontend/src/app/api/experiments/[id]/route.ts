@@ -15,8 +15,26 @@ export async function GET(
         _count: {
           select: {
             comparisons: true,
-            participants: true,
-            evaluations: true,
+            participants: {
+              where: {
+                id: {
+                  not: {
+                    startsWith: 'anon-session-'
+                  }
+                }
+              }
+            },
+            evaluations: {
+              where: {
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
+              }
+            },
           }
         }
       }
@@ -67,8 +85,26 @@ export async function PUT(
         _count: {
           select: {
             comparisons: true,
-            participants: true,
-            evaluations: true,
+            participants: {
+              where: {
+                id: {
+                  not: {
+                    startsWith: 'anon-session-'
+                  }
+                }
+              }
+            },
+            evaluations: {
+              where: {
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
+              }
+            },
           }
         }
       }
@@ -99,7 +135,17 @@ export async function DELETE(
       include: {
         _count: {
           select: {
-            evaluations: true,
+            evaluations: {
+              where: {
+                participant: {
+                  id: {
+                    not: {
+                      startsWith: 'anon-session-'
+                    }
+                  }
+                }
+              }
+            },
           }
         }
       }

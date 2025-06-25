@@ -37,7 +37,9 @@ import {
   Trash2,
   UserPlus,
   DollarSign,
-  RefreshCw
+  RefreshCw,
+  Upload,
+  StopCircle
 } from 'lucide-react'
 
 interface Experiment {
@@ -320,6 +322,53 @@ export function ExperimentTable({
     }
   }
 
+  const handleProlificAction = async (experiment: Experiment, action: 'publish' | 'pause' | 'stop') => {
+    if (!experiment.prolificStudyId) {
+      toast({
+        title: 'Error',
+        description: 'This experiment is not linked to a Prolific study',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setActionLoading(experiment.id)
+    try {
+      const response = await fetch(`/api/prolific/studies/${experiment.prolificStudyId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || `Failed to ${action} Prolific study`)
+      }
+
+      const actionPastTense = action === 'publish' ? 'published' : action === 'pause' ? 'paused' : 'stopped'
+      toast({
+        title: 'Success',
+        description: `Prolific study ${actionPastTense} successfully`,
+      })
+
+      // Refresh the experiments list to show updated status
+      if (onRefresh) {
+        onRefresh()
+      }
+    } catch (error: any) {
+      console.error(`Error ${action}ing Prolific study:`, error)
+      toast({
+        title: 'Error',
+        description: error.message || `Failed to ${action} Prolific study`,
+        variant: 'destructive'
+      })
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   if (loading) {
     return (
       <Card>
@@ -536,15 +585,6 @@ export function ExperimentTable({
                             <Edit className="h-4 w-4 mr-2" />
                             Edit Details
                           </DropdownMenuItem>
-                          {!exp.prolificStudyId && !exp.archived && (
-                            <DropdownMenuItem
-                              onClick={() => onCreateProlificStudy?.(exp.id)}
-                              disabled={!onCreateProlificStudy}
-                            >
-                              <DollarSign className="h-4 w-4 mr-2" />
-                              Launch on Prolific
-                            </DropdownMenuItem>
-                          )}
                           {exp.prolificStudyId && (
                             <DropdownMenuItem
                               onClick={() => handleSyncProlificData(exp)}
@@ -554,23 +594,91 @@ export function ExperimentTable({
                               Sync Prolific Data
                             </DropdownMenuItem>
                           )}
-                          {exp.status === 'active' ? (
+                          
+                          {/* Experiment Lifecycle Actions */}
+                          {!exp.prolificStudyId && !exp.archived && exp.status === 'draft' && (
                             <DropdownMenuItem
-                              onClick={() => handleUpdateStatus(exp.id, 'paused')}
+                              onClick={() => onCreateProlificStudy?.(exp.id)}
+                              disabled={!onCreateProlificStudy}
+                            >
+                              <DollarSign className="h-4 w-4 mr-2" />
+                              Launch on Prolific
+                            </DropdownMenuItem>
+                          )}
+
+                          {/* Prolific Study Actions */}
+                          {exp.prolificStudyId && exp.config?.prolificStatus === 'UNPUBLISHED' && (
+                            <DropdownMenuItem
+                              onClick={() => handleProlificAction(exp, 'publish')}
+                              disabled={actionLoading === exp.id}
+                            >
+                              <Upload className="h-4 w-4 mr-2" />
+                              Publish on Prolific
+                            </DropdownMenuItem>
+                          )}
+
+                          {/* Experiment Control Actions - Only available after Prolific is published */}
+                          {exp.prolificStudyId && exp.config?.prolificStatus === 'ACTIVE' && (
+                            <>
+                              {exp.status === 'draft' && (
+                                <DropdownMenuItem
+                                  onClick={() => handleUpdateStatus(exp.id, 'active')}
+                                  disabled={actionLoading === exp.id}
+                                >
+                                  <Play className="h-4 w-4 mr-2" />
+                                  Start Experiment
+                                </DropdownMenuItem>
+                              )}
+                              {exp.status === 'active' && (
+                                <DropdownMenuItem
+                                  onClick={() => handleUpdateStatus(exp.id, 'paused')}
+                                  disabled={actionLoading === exp.id}
+                                >
+                                  <Pause className="h-4 w-4 mr-2" />
+                                  Pause Experiment
+                                </DropdownMenuItem>
+                              )}
+                              {exp.status === 'paused' && (
+                                <DropdownMenuItem
+                                  onClick={() => handleUpdateStatus(exp.id, 'active')}
+                                  disabled={actionLoading === exp.id}
+                                >
+                                  <Play className="h-4 w-4 mr-2" />
+                                  Resume Experiment
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
+
+                          {/* Prolific Management Actions */}
+                          {exp.prolificStudyId && exp.config?.prolificStatus === 'ACTIVE' && (
+                            <DropdownMenuItem
+                              onClick={() => handleProlificAction(exp, 'pause')}
                               disabled={actionLoading === exp.id}
                             >
                               <Pause className="h-4 w-4 mr-2" />
-                              Pause Experiment
+                              Pause Prolific Study
                             </DropdownMenuItem>
-                          ) : exp.status === 'draft' || exp.status === 'paused' ? (
+                          )}
+                          {exp.prolificStudyId && exp.config?.prolificStatus === 'PAUSED' && (
                             <DropdownMenuItem
-                              onClick={() => handleUpdateStatus(exp.id, 'active')}
+                              onClick={() => handleProlificAction(exp, 'publish')}
                               disabled={actionLoading === exp.id}
                             >
                               <Play className="h-4 w-4 mr-2" />
-                              Start Experiment
+                              Resume Prolific Study
                             </DropdownMenuItem>
-                          ) : null}
+                          )}
+                          {exp.prolificStudyId && (exp.config?.prolificStatus === 'ACTIVE' || exp.config?.prolificStatus === 'PAUSED') && (
+                            <DropdownMenuItem
+                              onClick={() => handleProlificAction(exp, 'stop')}
+                              disabled={actionLoading === exp.id}
+                              className="text-red-600"
+                            >
+                              <StopCircle className="h-4 w-4 mr-2" />
+                              Stop Prolific Study
+                            </DropdownMenuItem>
+                          )}
                           {exp.archived ? (
                             <DropdownMenuItem
                               onClick={() => handleUnarchiveExperiment(exp.id)}

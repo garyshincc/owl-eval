@@ -16,9 +16,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const groupFilter = searchParams.get('group')
     
-    // Build where clause for filtering
+    // Build where clause for filtering (excluding anonymous participants)
     const whereClause = {
       status: 'completed',
+      participant: {
+        id: {
+          not: {
+            startsWith: 'anon-session-'
+          }
+        }
+      },
       experiment: {
         archived: false,
         ...(groupFilter && { group: groupFilter })
