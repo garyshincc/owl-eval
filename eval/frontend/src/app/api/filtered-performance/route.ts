@@ -5,9 +5,6 @@ import { Prisma } from '@prisma/client'
 export async function POST(request: NextRequest) {
   try {
     const { filters, selectedExperiment, includeAnonymous } = await request.json()
-    console.log('=== FILTERED PERFORMANCE API REQUEST ===');
-    console.log('selectedExperiment:', selectedExperiment);
-    console.log('includeAnonymous:', includeAnonymous);
     
     // Build where clause based on whether to include anonymous participants
     const whereClause = includeAnonymous ? {
@@ -107,17 +104,13 @@ export async function POST(request: NextRequest) {
     
     if (selectedExperiment) {
       // If a specific experiment is selected, get that experiment directly
-      console.log('Looking up specific experiment:', selectedExperiment);
       const specificExperiment = await prisma.experiment.findUnique({
         where: { id: selectedExperiment }
       })
-      console.log('Found specific experiment:', specificExperiment ? { id: specificExperiment.id, evaluationMode: (specificExperiment as any).evaluationMode } : 'NOT FOUND');
       
       if (specificExperiment) {
         experiments = [specificExperiment]
         evaluationModes = [(specificExperiment as any).evaluationMode || 'comparison']
-      } else {
-        console.log('Specific experiment not found, falling back to participant-based detection');
       }
     } else {
       // Otherwise get experiments from filtered participants
@@ -129,9 +122,6 @@ export async function POST(request: NextRequest) {
         experiments.map(exp => (exp as any).evaluationMode || 'comparison')
       ))
     }
-    
-    console.log('Available experiments:', experiments.map(exp => ({ id: exp.id, evaluationMode: (exp as any).evaluationMode })));
-    console.log('Detected evaluation modes:', evaluationModes);
 
     const performance = []
 
@@ -340,10 +330,6 @@ export async function POST(request: NextRequest) {
 
     // Handle Single Video Evaluations
     if (evaluationModes.includes('single_video')) {
-      console.log('=== SINGLE VIDEO EVALUATION DEBUGGING ===');
-      console.log('selectedExperiment:', selectedExperiment);
-      console.log('includeAnonymous:', includeAnonymous);
-      
       // Build single video evaluation query
       let singleVideoWhere: any = {
         status: 'completed',
@@ -355,15 +341,11 @@ export async function POST(request: NextRequest) {
         singleVideoWhere.videoTask = {
           experimentId: selectedExperiment
         }
-        console.log('Using experiment filter via videoTask');
         // Don't pre-filter by participant when using selectedExperiment - we'll filter manually later
       } else {
-        console.log('Filtering by participant IDs:', finalFilteredParticipants.map(p => p.id));
         // Otherwise filter by participant IDs as before
         singleVideoWhere.participantId = { in: finalFilteredParticipants.map(p => p.id) }
       }
-
-      console.log('Single video where clause:', JSON.stringify(singleVideoWhere, null, 2));
 
       const singleVideoEvaluations = await (prisma as any).singleVideoEvaluation.findMany({
         where: singleVideoWhere,
@@ -384,17 +366,6 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      console.log(`Found ${singleVideoEvaluations.length} single video evaluations before participant filtering`);
-      singleVideoEvaluations.forEach((evaluation, i) => {
-        console.log(`Evaluation ${i}:`, {
-          id: evaluation.id,
-          participantId: evaluation.participantId,
-          experimentId: evaluation.experimentId,
-          status: evaluation.status,
-          participantStatus: evaluation.participant?.status
-        });
-      });
-
       // Process single video evaluations
       const singleVideoStatsMap: Record<string, {
         totalScore: number;
@@ -405,26 +376,15 @@ export async function POST(request: NextRequest) {
       }> = {}
 
       for (const evaluation of singleVideoEvaluations) {
-        console.log(`Processing evaluation ${evaluation.id} for participant ${evaluation.participantId}`);
-        
         // If we queried by experiment directly, we need to apply demographic filters here
         if (selectedExperiment && evaluation.participant) {
-          console.log(`Participant details:`, {
-            id: evaluation.participant.id,
-            status: evaluation.participant.status,
-            isAnonymous: evaluation.participant.id.startsWith('anon-session-'),
-            includeAnonymous
-          });
-          
           // Check for anonymous participants first
           if (!includeAnonymous && evaluation.participant.id.startsWith('anon-session-')) {
-            console.log(`FILTERED OUT: Anonymous participant and includeAnonymous=false`);
             continue
           }
           
           // Check for returned participants - they should be excluded from counts
           if (evaluation.participant.status === 'returned') {
-            console.log(`FILTERED OUT: Returned participant`);
             continue
           }
           
