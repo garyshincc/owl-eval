@@ -52,6 +52,7 @@ interface Experiment {
   archivedAt: string | null
   group: string | null
   prolificStudyId: string | null
+  evaluationMode: string
   config: any
   createdAt: string
   updatedAt: string
@@ -577,7 +578,7 @@ export function ExperimentTable({
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
                             onClick={() => {
-                              const evaluationMode = exp.evaluationMode || 'comparison'
+                              const evaluationMode = exp.evaluationMode
                               if (evaluationMode === 'single_video') {
                                 window.open(`/evaluate-video/${exp.slug}`, '_blank')
                               } else {
@@ -608,8 +609,8 @@ export function ExperimentTable({
                               onClick={() => onCreateProlificStudy?.(exp.id)}
                               disabled={!onCreateProlificStudy}
                             >
-                              <DollarSign className="h-4 w-4 mr-2" />
-                              Launch on Prolific
+                              <Upload className="h-4 w-4 mr-2" />
+                              Publish to Prolific
                             </DropdownMenuItem>
                           )}
 
@@ -632,8 +633,8 @@ export function ExperimentTable({
                                   onClick={() => handleUpdateStatus(exp.id, 'active')}
                                   disabled={actionLoading === exp.id}
                                 >
-                                  <Play className="h-4 w-4 mr-2" />
-                                  Start Experiment
+                                  <DollarSign className="h-4 w-4 mr-2" />
+                                  Launch
                                 </DropdownMenuItem>
                               )}
                               {exp.status === 'active' && (

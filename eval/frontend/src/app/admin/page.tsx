@@ -60,6 +60,7 @@ interface Experiment {
   archivedAt: string | null
   group: string | null
   prolificStudyId: string | null
+  evaluationMode: string
   config: any
   createdAt: string
   updatedAt: string

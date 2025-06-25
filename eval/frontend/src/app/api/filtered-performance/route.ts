@@ -160,6 +160,7 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               experimentId: true,
+              status: true,
               metadata: true
             }
           }
@@ -360,6 +361,7 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               experimentId: true,
+              status: true,
               metadata: true
             }
           } : undefined

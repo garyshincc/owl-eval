@@ -6,7 +6,22 @@ export async function GET() {
   try {
     const experiments = await prisma.experiment.findMany({
       orderBy: { createdAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        status: true,
+        archived: true,
+        archivedAt: true,
+        group: true,
+        prolificStudyId: true,
+        evaluationMode: true,
+        config: true,
+        createdAt: true,
+        updatedAt: true,
+        startedAt: true,
+        completedAt: true,
         _count: {
           select: {
             comparisons: true,
