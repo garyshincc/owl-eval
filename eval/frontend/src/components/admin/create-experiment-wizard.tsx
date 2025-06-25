@@ -112,25 +112,31 @@ export function CreateExperimentWizard({
           newErrors.slug = 'Slug is required'
         }
         break
-      case 1: // Comparisons
+      case 1: // Comparisons or Video Tasks
         if (experiment.comparisons.length === 0) {
-          newErrors.comparisons = 'At least one comparison is required'
+          newErrors.comparisons = experiment.evaluationMode === 'comparison' 
+            ? 'At least one comparison is required'
+            : 'At least one video task is required'
         }
         experiment.comparisons.forEach((comp, index) => {
           if (!comp.scenarioId) {
             newErrors[`comp-${index}-scenario`] = 'Scenario is required'
           }
           if (!comp.modelA) {
-            newErrors[`comp-${index}-modelA`] = 'Model A is required'
-          }
-          if (!comp.modelB) {
-            newErrors[`comp-${index}-modelB`] = 'Model B is required'
+            newErrors[`comp-${index}-modelA`] = 'Model is required'
           }
           if (!comp.videoAUrl) {
-            newErrors[`comp-${index}-videoA`] = 'Video A is required'
+            newErrors[`comp-${index}-videoA`] = 'Video is required'
           }
-          if (!comp.videoBUrl) {
-            newErrors[`comp-${index}-videoB`] = 'Video B is required'
+          
+          // Only validate Model B and Video B for comparison mode
+          if (experiment.evaluationMode === 'comparison') {
+            if (!comp.modelB) {
+              newErrors[`comp-${index}-modelB`] = 'Model B is required'
+            }
+            if (!comp.videoBUrl) {
+              newErrors[`comp-${index}-videoB`] = 'Video B is required'
+            }
           }
         })
         break
@@ -241,9 +247,14 @@ export function CreateExperimentWizard({
         return experiment.name.trim() && experiment.slug.trim()
       case 1:
         return experiment.comparisons.length > 0 && 
-               experiment.comparisons.every(comp => 
-                 comp.scenarioId && comp.modelA && comp.modelB && comp.videoAUrl && comp.videoBUrl
-               )
+               experiment.comparisons.every(comp => {
+                 const baseFields = comp.scenarioId && comp.modelA && comp.videoAUrl
+                 if (experiment.evaluationMode === 'comparison') {
+                   return baseFields && comp.modelB && comp.videoBUrl
+                 } else {
+                   return baseFields
+                 }
+               })
       case 2:
         return true
       default:
@@ -383,7 +394,7 @@ export function CreateExperimentWizard({
             </div>
           )}
 
-          {currentStep === 1 && (
+          {currentStep === 1 && experiment.evaluationMode === 'comparison' && (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="font-semibold">
@@ -512,6 +523,101 @@ export function CreateExperimentWizard({
             </div>
           )}
 
+          {currentStep === 1 && experiment.evaluationMode === 'single_video' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="font-semibold">
+                  Video Tasks ({experiment.comparisons.length})
+                </h3>
+                <Button onClick={addComparison} size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Video Task
+                </Button>
+              </div>
+
+              {errors.comparisons && (
+                <p className="text-sm text-red-500 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.comparisons}
+                </p>
+              )}
+
+              {experiment.comparisons.length === 0 ? (
+                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                  <p className="text-muted-foreground mb-4">No video tasks yet</p>
+                  <Button onClick={addComparison} variant="outline">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Your First Video Task
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {experiment.comparisons.map((task, index) => (
+                    <div key={task.id} className="border rounded-lg p-4 space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h4 className="font-medium">Video Task {index + 1}</h4>
+                        <Button 
+                          onClick={() => removeComparison(task.id)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Scenario <span className="text-red-500">*</span></Label>
+                          <ScenarioSelector
+                            value={task.scenarioId}
+                            onChange={(value) => updateComparison(task.id, 'scenarioId', value)}
+                            placeholder="Select or create scenario"
+                          />
+                          {errors[`comp-${index}-scenario`] && (
+                            <p className="text-xs text-red-500">{errors[`comp-${index}-scenario`]}</p>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Model <span className="text-red-500">*</span></Label>
+                          <Input
+                            placeholder="e.g., diamond-1b"
+                            value={task.modelA}
+                            onChange={(e) => updateComparison(task.id, 'modelA', e.target.value)}
+                            className={errors[`comp-${index}-modelA`] ? 'border-red-500' : ''}
+                          />
+                          {errors[`comp-${index}-modelA`] && (
+                            <p className="text-xs text-red-500">{errors[`comp-${index}-modelA`]}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Video <span className="text-destructive">*</span></Label>
+                        <select
+                          value={task.videoAUrl}
+                          onChange={(e) => updateComparison(task.id, 'videoAUrl', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-md text-sm bg-background text-foreground ${
+                            errors[`comp-${index}-videoA`] ? 'border-destructive' : 'border-border'
+                          }`}
+                        >
+                          <option value="">Select video to evaluate</option>
+                          {uploadedVideos.map((video) => (
+                            <option key={video.key} value={video.url}>
+                              {video.name}
+                            </option>
+                          ))}
+                        </select>
+                        {errors[`comp-${index}-videoA`] && (
+                          <p className="text-xs text-destructive">{errors[`comp-${index}-videoA`]}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {currentStep === 2 && (
             <div className="space-y-6">
               <div className="bg-secondary/10 border border-secondary/20 rounded-lg p-4">
@@ -536,6 +642,12 @@ export function CreateExperimentWizard({
                       <span className="text-sm text-muted-foreground">Slug:</span>
                       <code className="text-sm bg-muted px-1 rounded">{experiment.slug}</code>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Evaluation Mode:</span>
+                      <span className="text-sm font-medium">
+                        {experiment.evaluationMode === 'comparison' ? 'Comparison Mode (A vs B)' : 'Single Video Mode (Absolute Rating)'}
+                      </span>
+                    </div>
                     {experiment.group && (
                       <div className="flex justify-between">
                         <span className="text-sm text-muted-foreground">Group:</span>
@@ -553,7 +665,10 @@ export function CreateExperimentWizard({
 
                 <div>
                   <h4 className="font-medium mb-2">
-                    Comparisons ({experiment.comparisons.length})
+                    {experiment.evaluationMode === 'comparison' 
+                      ? `Comparisons (${experiment.comparisons.length})`
+                      : `Video Tasks (${experiment.comparisons.length})`
+                    }
                   </h4>
                   <div className="space-y-2">
                     {experiment.comparisons.map((comp, index) => (
@@ -561,7 +676,10 @@ export function CreateExperimentWizard({
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
                             <p className="text-sm font-medium">
-                              {comp.modelA} vs {comp.modelB}
+                              {experiment.evaluationMode === 'comparison' 
+                                ? `${comp.modelA} vs ${comp.modelB}`
+                                : `${comp.modelA} - Single Video Task`
+                              }
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Scenario: {comp.scenarioId}

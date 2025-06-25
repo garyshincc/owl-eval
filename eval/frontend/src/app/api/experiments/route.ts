@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { name, description, slug, group, comparisons } = await request.json();
+    const { name, description, slug, group, comparisons, evaluationMode = 'comparison' } = await request.json();
 
     if (!name || !comparisons || !Array.isArray(comparisons)) {
       return NextResponse.json(
@@ -60,13 +60,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate that all comparisons have required fields
+    // Validate that all comparisons have required fields based on evaluation mode
     for (const comp of comparisons) {
-      if (!comp.scenarioId || !comp.modelA || !comp.modelB || !comp.videoAUrl || !comp.videoBUrl) {
+      if (!comp.scenarioId || !comp.modelA || !comp.videoAUrl) {
         return NextResponse.json(
-          { error: 'All comparisons must have scenarioId, modelA, modelB, videoAUrl, and videoBUrl' },
+          { error: 'All tasks must have scenarioId, modelA, and videoAUrl' },
           { status: 400 }
         );
+      }
+      
+      // Additional validation for comparison mode
+      if (evaluationMode === 'comparison') {
+        if (!comp.modelB || !comp.videoBUrl) {
+          return NextResponse.json(
+            { error: 'Comparison mode requires modelB and videoBUrl for all comparisons' },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -78,8 +88,11 @@ export async function POST(request: NextRequest) {
         slug: slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
         group: group || null,
         status: 'draft',
+        evaluationMode: evaluationMode,
         config: {
-          models: Array.from(new Set([...comparisons.map(c => c.modelA), ...comparisons.map(c => c.modelB)])),
+          models: evaluationMode === 'comparison' 
+            ? Array.from(new Set([...comparisons.map(c => c.modelA), ...comparisons.map(c => c.modelB)]))
+            : Array.from(new Set(comparisons.map(c => c.modelA))),
           scenarios: Array.from(new Set(comparisons.map(c => c.scenarioId)))
         },
         createdBy: authResult.user?.id || null,
