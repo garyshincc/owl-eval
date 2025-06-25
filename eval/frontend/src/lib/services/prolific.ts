@@ -474,11 +474,8 @@ export class ProlificService {
     switch (study.status) {
       case 'UNPUBLISHED':
       case 'DRAFT':
-        // If study exists but is unpublished, keep it as draft only if it was never published
-        // If it was previously active but now unpublished, that's unusual - keep current status
-        if (experiment.status === 'draft') {
-          experimentStatus = 'draft';
-        }
+        // If Prolific study is unpublished/draft, experiment should be draft
+        experimentStatus = 'draft';
         break;
       case 'ACTIVE':
       case 'RUNNING':

@@ -48,8 +48,18 @@ export default function Home() {
       if (experimentId) {
         // For Prolific sessions, first determine the experiment mode
         const expResponse = await fetch(`/api/experiments`)
+        if (!expResponse.ok) {
+          console.error('Failed to fetch experiments:', expResponse.status)
+          // Show error message instead of crashing
+          throw new Error('Failed to load experiment data')
+        }
         const experiments = await expResponse.json()
         const experiment = experiments.find((exp: any) => exp.id === experimentId)
+        
+        if (!experiment) {
+          console.error('Experiment not found:', experimentId)
+          throw new Error('Experiment not found or no longer active')
+        }
         
         if (experiment && experiment.evaluationMode === 'single_video') {
           setExperimentMode('single_video')

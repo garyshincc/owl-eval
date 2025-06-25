@@ -25,7 +25,7 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 
 interface VideoTask {
-  video_task_id: string
+  id: string
   scenario_id: string
   scenario_metadata: {
     name: string
@@ -240,7 +240,7 @@ export default function EvaluateVideoPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          videoTaskId: videoTask.video_task_id,
+          videoTaskId: videoTask.id,
           participantId,
           experimentId,
           prolificPid,
@@ -410,6 +410,20 @@ export default function EvaluateVideoPage() {
       return
     }
 
+    // Validate that all ratings are valid integers between 1-5
+    const invalidRatings = dimensions.filter(dim => {
+      const rating = responses[dim]
+      return !rating || rating < 1 || rating > 5 || !Number.isInteger(rating)
+    })
+    if (invalidRatings.length > 0) {
+      toast({
+        title: 'Invalid Ratings',
+        description: 'All ratings must be between 1 and 5',
+        variant: 'destructive'
+      })
+      return
+    }
+
     // Clear any pending auto-save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
@@ -430,7 +444,7 @@ export default function EvaluateVideoPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          video_task_id: videoTask?.video_task_id,
+          video_task_id: videoTask?.id,
           dimension_scores: responses,
           completion_time_seconds: (Date.now() - startTime) / 1000,
           participant_id: participantId,
