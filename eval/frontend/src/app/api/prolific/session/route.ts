@@ -27,7 +27,10 @@ export async function POST(request: NextRequest) {
     // Find the experiment by Prolific study ID
     const experiment = await prisma.experiment.findUnique({
       where: { prolificStudyId: studyId },
-      include: { comparisons: true }
+      include: { 
+        comparisons: true,
+        videoTasks: true 
+      }
     })
 
     if (!experiment) {
@@ -69,13 +72,16 @@ export async function POST(request: NextRequest) {
       })
     } else {
       // Create new participant for this experiment
+      const evaluationMode = (experiment as any).evaluationMode || 'comparison'
+      
       participant = await prisma.participant.create({
         data: {
           prolificId: prolificPid,
           experimentId: experiment.id,
           sessionId: sessionId,
           status: 'active',
-          assignedComparisons: experiment.comparisons.map(c => c.id),
+          assignedComparisons: evaluationMode === 'comparison' ? experiment.comparisons.map(c => c.id) : [],
+          assignedVideoTasks: evaluationMode === 'single_video' ? experiment.videoTasks.map(vt => vt.id) : [],
           metadata: {
             studyId: studyId,
             firstAccessed: new Date().toISOString()
