@@ -43,7 +43,7 @@ interface Comparison {
 }
 
 interface VideoTask {
-  id: string
+  video_task_id: string
   scenario_id: string
   scenario_metadata: {
     name: string
@@ -339,7 +339,7 @@ export default function EvaluatePage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            videoTaskId: videoTask?.id,
+            videoTaskId: videoTask?.video_task_id,
             participantId,
             experimentId,
             prolificPid,
@@ -491,6 +491,7 @@ export default function EvaluatePage() {
     }
 
     const handleTimeUpdateA = () => {
+      console.log('Time update A:', videoA.currentTime)
       setCurrentTimeA(videoA.currentTime)
     }
 
@@ -520,6 +521,7 @@ export default function EvaluatePage() {
     }
 
     // Add all event listeners
+    console.log('Adding event listeners to video A:', videoA.src)
     videoA.addEventListener('play', handlePlayA)
     videoA.addEventListener('pause', handlePauseA)
     videoA.addEventListener('timeupdate', handleTimeUpdateA)
@@ -547,57 +549,6 @@ export default function EvaluatePage() {
     }
   }, [comparison, videoTask, playbackSpeed, volumeA])
 
-  // Additional event listeners specifically for single video mode to ensure they're attached after video loads
-  useEffect(() => {
-    console.log('Single video useEffect triggered:', { 
-      evaluationMode, 
-      hasVideoTask: !!videoTask, 
-      hasVideoRef: !!videoARef.current,
-      videoSrc: videoTask?.video_path 
-    });
-    
-    if (evaluationMode === 'single_video' && videoTask && videoARef.current) {
-      const video = videoARef.current;
-      console.log('Setting up single video event listeners for:', video.src);
-      
-      const handleSingleVideoPlay = () => {
-        console.log('Single video started playing');
-        setPlayingA(true);
-      };
-      
-      const handleSingleVideoPause = () => {
-        console.log('Single video paused');
-        setPlayingA(false);
-      };
-      
-      const handleSingleVideoTimeUpdate = () => {
-        console.log('Single video time update:', video.currentTime);
-        setCurrentTimeA(video.currentTime);
-      };
-      
-      const handleSingleVideoLoadedMetadata = () => {
-        console.log('Single video metadata loaded, duration:', video.duration);
-        setDurationA(video.duration);
-        video.playbackRate = playbackSpeed;
-        video.volume = volumeA;
-      };
-
-      // Add event listeners
-      video.addEventListener('play', handleSingleVideoPlay);
-      video.addEventListener('pause', handleSingleVideoPause);
-      video.addEventListener('timeupdate', handleSingleVideoTimeUpdate);
-      video.addEventListener('loadedmetadata', handleSingleVideoLoadedMetadata);
-
-      return () => {
-        // Clean up event listeners
-        console.log('Cleaning up single video event listeners');
-        video.removeEventListener('play', handleSingleVideoPlay);
-        video.removeEventListener('pause', handleSingleVideoPause);
-        video.removeEventListener('timeupdate', handleSingleVideoTimeUpdate);
-        video.removeEventListener('loadedmetadata', handleSingleVideoLoadedMetadata);
-      };
-    }
-  }, [evaluationMode, videoTask, playbackSpeed, volumeA]);
 
   // Set up video event listeners for Video B
   useEffect(() => {
@@ -751,12 +702,16 @@ export default function EvaluatePage() {
     if (videoRef.current) {
       const clampedTime = Math.max(0, Math.min(time, videoRef.current.duration || 0));
       videoRef.current.currentTime = clampedTime;
+      
+      // Immediately update the state to sync the progress bar
       if (video === 'A') {
         setCurrentTimeA(clampedTime);
       } else {
         setCurrentTimeB(clampedTime);
       }
-      if (syncMode) {
+      
+      // Handle sync mode for comparison videos
+      if (syncMode && comparison) {
         const otherRef = video === 'A' ? videoBRef : videoARef;
         if (otherRef.current) {
           otherRef.current.currentTime = clampedTime;
@@ -866,7 +821,7 @@ export default function EvaluatePage() {
 
     try {
       // Get participant info if this is a Prolific session
-      const participantId = sessionStorage.getItem('participant_id')
+      const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
       const experimentId = sessionStorage.getItem('experiment_id')
       const prolificPid = sessionStorage.getItem('prolific_pid')
       const sessionId = getSessionId()
@@ -874,24 +829,41 @@ export default function EvaluatePage() {
       let submitResponse, submitResult
 
       if (evaluationMode === 'single_video') {
+        // Debug the payload before sending
+        const payload = {
+          video_task_id: videoTask?.video_task_id,
+          dimension_scores: responses,
+          completion_time_seconds: (Date.now() - startTime) / 1000,
+          participant_id: participantId,
+          experiment_id: experimentId,
+          evaluator_id: prolificPid || 'anonymous',
+          session_id: sessionId
+        };
+        
+        console.log('Single video evaluation payload:', payload);
+        console.log('VideoTask object:', videoTask);
+        console.log('Responses object:', responses);
+        
         // Handle single video evaluation submission
         submitResponse = await fetch('/api/submit-single-video-evaluation', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            video_task_id: videoTask?.id,
-            dimension_scores: responses,
-            completion_time_seconds: (Date.now() - startTime) / 1000,
-            participant_id: participantId,
-            experiment_id: experimentId,
-            evaluator_id: prolificPid || 'anonymous',
-            session_id: sessionId
-          })
+          body: JSON.stringify(payload)
         })
 
         submitResult = await submitResponse.json()
+        
+        if (!submitResponse.ok) {
+          console.error('Single video submission failed:', submitResult);
+          toast({
+            title: 'Submission Failed',
+            description: submitResult.error || 'Failed to submit evaluation',
+            variant: 'destructive'
+          });
+          return;
+        }
 
         toast({
           title: 'Success',

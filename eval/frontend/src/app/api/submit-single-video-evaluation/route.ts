@@ -52,6 +52,13 @@ export async function POST(request: Request) {
           : data.evaluator_id || `anon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           
         try {
+          console.log('Creating participant with:', {
+            id: actualParticipantId,
+            prolificId: uniqueProlificId,
+            experimentId: actualExperimentId,
+            sessionId: sessionId,
+          });
+          
           await prisma.participant.create({
             data: {
               id: actualParticipantId,
@@ -63,10 +70,24 @@ export async function POST(request: Request) {
               assignedVideoTasks: allVideoTasks.map(vt => vt.id),
             },
           });
+          console.log('Participant created successfully:', actualParticipantId);
         } catch (error) {
           // If participant creation fails due to constraint violation, 
           // it might already exist - continue with evaluation
-          console.log('Participant creation failed (likely already exists):', error);
+          console.error('Participant creation failed:', error);
+          
+          // Check if the participant actually exists
+          const existingCheck = await prisma.participant.findUnique({
+            where: { id: actualParticipantId },
+          });
+          
+          if (!existingCheck) {
+            console.error('Participant does not exist and creation failed');
+            return NextResponse.json(
+              { error: 'Failed to create participant. Check if experiment exists.' },
+              { status: 400 }
+            );
+          }
         }
       }
     }
