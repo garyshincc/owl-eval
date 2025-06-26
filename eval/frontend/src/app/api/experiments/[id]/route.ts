@@ -177,28 +177,45 @@ export async function DELETE(
     }
 
     // Delete related data in correct order to avoid foreign key constraint violations
-    // 1. Delete evaluations first (they reference comparisons, participants, and experiment)
+    
+    // First, get all participants for this experiment
+    const participants = await prisma.participant.findMany({
+      where: { experimentId: id },
+      select: { id: true }
+    });
+    
+    const participantIds = participants.map(p => p.id);
+
+    // 1. Delete evaluations first (they reference comparisons and participants)
     await prisma.evaluation.deleteMany({
       where: { experimentId: id }
     });
 
-    // 2. Delete single video evaluations (they reference video tasks and experiment)
-    await prisma.singleVideoEvaluation.deleteMany({
+    // 2. Delete ALL single video evaluations that reference these participants
+    // (not just those with matching experimentId, since participants might have 
+    // evaluations from different experiments due to session handling)
+    if (participantIds.length > 0) {
+      await prisma.singleVideoEvaluation.deleteMany({
+        where: { 
+          participantId: {
+            in: participantIds
+          }
+        }
+      });
+    }
+
+    // 3. Delete participants (they are no longer referenced by any evaluations)
+    await prisma.participant.deleteMany({
       where: { experimentId: id }
     });
 
-    // 3. Delete comparisons (they reference experiment)
+    // 4. Delete comparisons (they reference experiment)
     await prisma.comparison.deleteMany({
       where: { experimentId: id }
     });
 
-    // 4. Delete video tasks (they reference experiment)
+    // 5. Delete video tasks (they reference experiment)
     await prisma.videoTask.deleteMany({
-      where: { experimentId: id }
-    });
-
-    // 5. Delete participants (they reference experiment)
-    await prisma.participant.deleteMany({
       where: { experimentId: id }
     });
 

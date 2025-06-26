@@ -69,8 +69,10 @@ interface Experiment {
   comparisons?: Array<any>
   _count: {
     comparisons: number
+    videoTasks: number
     participants: number
     evaluations: number
+    singleVideoEvals: number
   }
 }
 

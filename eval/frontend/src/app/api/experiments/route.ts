@@ -25,6 +25,7 @@ export async function GET() {
         _count: {
           select: {
             comparisons: true,
+            videoTasks: true,
             participants: {
               where: {
                 AND: [
@@ -44,6 +45,27 @@ export async function GET() {
               }
             },
             evaluations: {
+              where: {
+                status: 'completed',
+                participant: {
+                  AND: [
+                    {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    },
+                    {
+                      status: {
+                        not: 'returned'  // Always exclude returned participants
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            singleVideoEvals: {
               where: {
                 status: 'completed',
                 participant: {
@@ -163,6 +185,7 @@ export async function POST(request: NextRequest) {
         _count: {
           select: {
             comparisons: true,
+            videoTasks: true,
             participants: {
               where: {
                 AND: [
@@ -182,6 +205,27 @@ export async function POST(request: NextRequest) {
               }
             },
             evaluations: {
+              where: {
+                status: 'completed',
+                participant: {
+                  AND: [
+                    {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    },
+                    {
+                      status: {
+                        not: 'returned'  // Always exclude returned participants
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            singleVideoEvals: {
               where: {
                 status: 'completed',
                 participant: {

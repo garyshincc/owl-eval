@@ -60,8 +60,10 @@ interface Experiment {
   completedAt: string | null
   _count: {
     comparisons: number
+    videoTasks: number
     participants: number
     evaluations: number
+    singleVideoEvals: number
   }
 }
 
@@ -111,15 +113,27 @@ export function ExperimentTable({
   }
 
   const getProgressPercentage = (exp: Experiment) => {
-    if (exp._count.comparisons === 0) return 0
-    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
-    const targetEvaluations = exp._count.comparisons * evaluationsPerComparison
-    return Math.min((exp._count.evaluations / targetEvaluations) * 100, 100)
+    if (exp.evaluationMode === 'single_video') {
+      if (exp._count.videoTasks === 0) return 0
+      const evaluationsPerVideo = exp.config?.evaluationsPerComparison || -1
+      const targetEvaluations = exp._count.videoTasks * evaluationsPerVideo
+      return Math.min((exp._count.singleVideoEvals / targetEvaluations) * 100, 100)
+    } else {
+      if (exp._count.comparisons === 0) return 0
+      const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
+      const targetEvaluations = exp._count.comparisons * evaluationsPerComparison
+      return Math.min((exp._count.evaluations / targetEvaluations) * 100, 100)
+    }
   }
 
   const getTargetEvaluations = (exp: Experiment) => {
-    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
-    return exp._count.comparisons * evaluationsPerComparison
+    if (exp.evaluationMode === 'single_video') {
+      const evaluationsPerVideo = exp.config?.evaluationsPerComparison || -1
+      return exp._count.videoTasks * evaluationsPerVideo
+    } else {
+      const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
+      return exp._count.comparisons * evaluationsPerComparison
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -594,12 +608,20 @@ export function ExperimentTable({
                     <TableCell>
                       <div className="space-y-2 min-w-[120px]">
                         <div className="flex justify-between text-xs">
-                          <span>{exp._count.evaluations} evaluations</span>
+                          <span>
+                            {exp.evaluationMode === 'single_video' 
+                              ? exp._count.singleVideoEvals 
+                              : exp._count.evaluations
+                            } evaluations
+                          </span>
                           <span>{Math.round(getProgressPercentage(exp))}%</span>
                         </div>
                         <Progress value={getProgressPercentage(exp)} className="h-2" />
                         <div className="text-xs text-gray-500">
-                          {exp._count.evaluations}/{getTargetEvaluations(exp)} target
+                          {exp.evaluationMode === 'single_video' 
+                            ? exp._count.singleVideoEvals 
+                            : exp._count.evaluations
+                          }/{getTargetEvaluations(exp)} target
                         </div>
                       </div>
                     </TableCell>
