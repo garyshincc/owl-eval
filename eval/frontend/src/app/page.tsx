@@ -144,7 +144,7 @@ export default function Home() {
               <li>Use a modern browser (Chrome, Firefox, Safari) for best experience</li>
               {isProlific && (
                 <li className="font-semibold text-cyan-400">
-                  Complete all evaluations to receive your completion code
+                  Complete all evaluations as instructed
                 </li>
               )}
             </ul>
