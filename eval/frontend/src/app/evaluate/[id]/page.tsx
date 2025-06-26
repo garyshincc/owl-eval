@@ -549,8 +549,16 @@ export default function EvaluatePage() {
 
   // Additional event listeners specifically for single video mode to ensure they're attached after video loads
   useEffect(() => {
+    console.log('Single video useEffect triggered:', { 
+      evaluationMode, 
+      hasVideoTask: !!videoTask, 
+      hasVideoRef: !!videoARef.current,
+      videoSrc: videoTask?.video_path 
+    });
+    
     if (evaluationMode === 'single_video' && videoTask && videoARef.current) {
       const video = videoARef.current;
+      console.log('Setting up single video event listeners for:', video.src);
       
       const handleSingleVideoPlay = () => {
         console.log('Single video started playing');
@@ -563,6 +571,7 @@ export default function EvaluatePage() {
       };
       
       const handleSingleVideoTimeUpdate = () => {
+        console.log('Single video time update:', video.currentTime);
         setCurrentTimeA(video.currentTime);
       };
       
@@ -581,6 +590,7 @@ export default function EvaluatePage() {
 
       return () => {
         // Clean up event listeners
+        console.log('Cleaning up single video event listeners');
         video.removeEventListener('play', handleSingleVideoPlay);
         video.removeEventListener('pause', handleSingleVideoPause);
         video.removeEventListener('timeupdate', handleSingleVideoTimeUpdate);
@@ -1082,8 +1092,10 @@ export default function EvaluatePage() {
                           try {
                             if (video.paused) {
                               await video.play();
+                              setPlayingA(true);
                             } else {
                               video.pause();
+                              setPlayingA(false);
                             }
                           } catch (error) {
                             console.error('Error controlling video:', error);
