@@ -47,16 +47,27 @@ export async function POST(request: Request) {
         });
         
         // Create an anonymous participant record with all comparisons assigned
-        await prisma.participant.create({
-          data: {
-            id: actualParticipantId,
-            prolificId: data.evaluator_id || `anon-${Date.now()}`,
-            experimentId: actualExperimentId,
-            sessionId: sessionId,
-            status: 'active',
-            assignedComparisons: allComparisons.map(c => c.id),
-          },
-        });
+        const uniqueProlificId = data.evaluator_id === 'anonymous' 
+          ? `anon-${actualParticipantId}` 
+          : data.evaluator_id || `anon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
+        try {
+          await prisma.participant.create({
+            data: {
+              id: actualParticipantId,
+              prolificId: uniqueProlificId,
+              experimentId: actualExperimentId,
+              sessionId: sessionId,
+              status: 'active',
+              assignedComparisons: allComparisons.map(c => c.id),
+              assignedVideoTasks: [], // Empty for comparison mode
+            },
+          });
+        } catch (error) {
+          // If participant creation fails due to constraint violation, 
+          // it might already exist - continue with evaluation
+          console.log('Participant creation failed (likely already exists):', error);
+        }
       }
     }
 
