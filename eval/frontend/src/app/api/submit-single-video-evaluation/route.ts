@@ -47,17 +47,27 @@ export async function POST(request: Request) {
         });
         
         // Create an anonymous participant record with all video tasks assigned
-        await prisma.participant.create({
-          data: {
-            id: actualParticipantId,
-            prolificId: data.evaluator_id || `anon-${Date.now()}`,
-            experimentId: actualExperimentId,
-            sessionId: sessionId,
-            status: 'active',
-            assignedComparisons: [], // Empty for single video mode
-            assignedVideoTasks: allVideoTasks.map(vt => vt.id),
-          },
-        });
+        const uniqueProlificId = data.evaluator_id === 'anonymous' 
+          ? `anon-${actualParticipantId}` 
+          : data.evaluator_id || `anon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          
+        try {
+          await prisma.participant.create({
+            data: {
+              id: actualParticipantId,
+              prolificId: uniqueProlificId,
+              experimentId: actualExperimentId,
+              sessionId: sessionId,
+              status: 'active',
+              assignedComparisons: [], // Empty for single video mode
+              assignedVideoTasks: allVideoTasks.map(vt => vt.id),
+            },
+          });
+        } catch (error) {
+          // If participant creation fails due to constraint violation, 
+          // it might already exist - continue with evaluation
+          console.log('Participant creation failed (likely already exists):', error);
+        }
       }
     }
 
@@ -145,30 +155,29 @@ export async function POST(request: Request) {
     
     // Check if there are more video tasks available in this experiment
     let nextVideoTask = null;
-    if (!data.participant_id || data.participant_id === 'anonymous') {
-      // Get all video tasks in this experiment
-      const allVideoTasks = await prisma.videoTask.findMany({
-        where: { 
-          experimentId: actualExperimentId
-        },
-        orderBy: { createdAt: 'asc' }
-      });
+    
+    // Get all video tasks in this experiment
+    const allVideoTasks = await prisma.videoTask.findMany({
+      where: { 
+        experimentId: actualExperimentId
+      },
+      orderBy: { createdAt: 'asc' }
+    });
 
-      // Find video tasks that haven't been evaluated by this user
-      for (const task of allVideoTasks) {
-        const existingEval = await prisma.singleVideoEvaluation.findUnique({
-          where: {
-            videoTaskId_participantId: {
-              videoTaskId: task.id,
-              participantId: actualParticipantId
-            }
+    // Find video tasks that haven't been evaluated by this user
+    for (const task of allVideoTasks) {
+      const existingEval = await prisma.singleVideoEvaluation.findUnique({
+        where: {
+          videoTaskId_participantId: {
+            videoTaskId: task.id,
+            participantId: actualParticipantId
           }
-        });
-        
-        if (!existingEval || existingEval.status !== 'completed') {
-          nextVideoTask = task.id;
-          break;
         }
+      });
+      
+      if (!existingEval || existingEval.status !== 'completed') {
+        nextVideoTask = task.id;
+        break;
       }
     }
     

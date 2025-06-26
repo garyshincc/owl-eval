@@ -631,12 +631,7 @@ export function ExperimentTable({
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
                             onClick={() => {
-                              const evaluationMode = exp.evaluationMode
-                              if (evaluationMode === 'single_video') {
-                                window.open(`/evaluate-video/${exp.slug}`, '_blank')
-                              } else {
-                                window.open(`/evaluate/${exp.slug}`, '_blank')
-                              }
+                              window.open(`/evaluate/${exp.slug}`, '_blank')
                             }}
                           >
                             <ExternalLink className="h-4 w-4 mr-2" />

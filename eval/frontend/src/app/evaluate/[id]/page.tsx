@@ -22,7 +22,8 @@ import {
   Unlink,
   Settings,
   Save,
-  CheckCircle
+  CheckCircle,
+  Star
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -39,6 +40,17 @@ interface Comparison {
     A: string
     B: string
   }
+}
+
+interface VideoTask {
+  id: string
+  scenario_id: string
+  scenario_metadata: {
+    name: string
+    description: string
+  }
+  model_name: string
+  video_path: string
 }
 
 interface DimensionInfo {
@@ -104,10 +116,12 @@ export default function EvaluatePage() {
   const { toast } = useToast()
 
   const [comparison, setComparison] = useState<Comparison | null>(null)
+  const [videoTask, setVideoTask] = useState<VideoTask | null>(null)
+  const [evaluationMode, setEvaluationMode] = useState<'comparison' | 'single_video'>('comparison')
   const [actualComparisonId, setActualComparisonId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [responses, setResponses] = useState<Record<string, string>>({})
+  const [responses, setResponses] = useState<Record<string, string | number>>({})
   const [startTime] = useState(Date.now())
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [saving, setSaving] = useState(false)
@@ -145,24 +159,79 @@ export default function EvaluatePage() {
       let response = await fetch(`/api/comparisons/${params.id}`)
 
       if (!response.ok && response.status === 404) {
+        // Not a comparison, try as video task ID
+        const videoResponse = await fetch(`/api/video-tasks/${params.id}`)
+        if (videoResponse.ok) {
+          // It's a video task - handle as single video evaluation
+          const videoData = await videoResponse.json()
+          setVideoTask(videoData)
+          setEvaluationMode('single_video')
+          
+          // Load any existing draft for single video
+          const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
+          const sessionId = getSessionId()
+          const draftResponse = await fetch(`/api/single-video-evaluations/draft?videoTaskId=${videoData.video_task_id}&participantId=${participantId}&sessionId=${sessionId}`)
+          
+          if (draftResponse.ok) {
+            const draftData = await draftResponse.json()
+            if (draftData.draft) {
+              if (draftData.draft.status === 'completed') {
+                toast({
+                  title: 'Already Completed',
+                  description: 'You have already submitted an evaluation for this video',
+                  variant: 'destructive'
+                })
+                router.push('/thank-you')
+                return
+              }
+              
+              if (draftData.draft.status === 'draft') {
+                const savedResponses = draftData.draft.dimensionScores || {}
+                setResponses(savedResponses)
+                setLastSaved(new Date(draftData.draft.lastSavedAt))
+                
+                toast({
+                  title: 'Draft Loaded',
+                  description: 'Your previous progress has been restored',
+                })
+              }
+            }
+          }
+          setLoading(false)
+          return
+        }
+
         // If not found, try as experiment slug to get a random comparison
         const experimentsResponse = await fetch(`/api/experiments`)
         if (experimentsResponse.ok) {
           const experiments = await experimentsResponse.json()
           const experiment = experiments.find((exp: any) => exp.slug === params.id)
 
-          if (experiment && experiment._count.comparisons > 0) {
-            // Get comparisons for this experiment
-            const comparisonsResponse = await fetch(`/api/comparisons?experimentId=${experiment.id}`)
-            if (comparisonsResponse.ok) {
-              const comparisons = await comparisonsResponse.json()
-              if (comparisons.length > 0) {
-                // Get the first comparison
-                const comparisonId = comparisons[0].comparison_id
-                setActualComparisonId(comparisonId)
-                response = await fetch(`/api/comparisons/${comparisonId}`)
-                // Update the URL to reflect the actual comparison ID
-                window.history.replaceState({}, '', `/evaluate/${comparisonId}`)
+          if (experiment) {
+            if (experiment.evaluationMode === 'single_video') {
+              // Get first video task for this experiment
+              const videoTasksResponse = await fetch(`/api/video-tasks?experimentId=${experiment.id}`)
+              if (videoTasksResponse.ok) {
+                const videoTasks = await videoTasksResponse.json()
+                if (videoTasks.length > 0) {
+                  // Redirect to unified URL with first video task ID
+                  router.push(`/evaluate/${videoTasks[0].id}`)
+                  return
+                }
+              }
+            } else if (experiment._count.comparisons > 0) {
+              // Get comparisons for this experiment
+              const comparisonsResponse = await fetch(`/api/comparisons?experimentId=${experiment.id}`)
+              if (comparisonsResponse.ok) {
+                const comparisons = await comparisonsResponse.json()
+                if (comparisons.length > 0) {
+                  // Get the first comparison
+                  const comparisonId = comparisons[0].comparison_id
+                  setActualComparisonId(comparisonId)
+                  response = await fetch(`/api/comparisons/${comparisonId}`)
+                  // Update the URL to reflect the actual comparison ID
+                  window.history.replaceState({}, '', `/evaluate/${comparisonId}`)
+                }
               }
             }
           }
@@ -244,16 +313,17 @@ export default function EvaluatePage() {
 
   // Auto-save functionality
   const saveDraft = useCallback(async () => {
-    if (!comparison || Object.keys(responses).length === 0 || submitting) {
-      console.log('Skipping save: no comparison, responses, or currently submitting', {
+    if ((!comparison && !videoTask) || Object.keys(responses).length === 0 || submitting) {
+      console.log('Skipping save: no content, responses, or currently submitting', {
         comparison: !!comparison,
+        videoTask: !!videoTask,
         responsesCount: Object.keys(responses).length,
         submitting
       })
       return
     }
 
-    console.log('Starting draft save...', { responses })
+    console.log('Starting draft save...', { responses, evaluationMode })
     setSaving(true)
     try {
       const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
@@ -261,18 +331,50 @@ export default function EvaluatePage() {
       const prolificPid = sessionStorage.getItem('prolific_pid')
       const sessionId = getSessionId()
 
+      if (evaluationMode === 'single_video') {
+        // Save single video evaluation draft
+        const response = await fetch('/api/single-video-evaluations/draft', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoTaskId: videoTask?.video_task_id,
+            participantId,
+            experimentId,
+            prolificPid,
+            dimensionScores: responses,
+            completionTimeSeconds: (Date.now() - startTime) / 1000,
+            clientMetadata: {
+              userAgent: navigator.userAgent,
+              sessionId,
+            },
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setLastSaved(new Date(data.lastSavedAt))
+          console.log('✓ Single video draft saved successfully')
+        }
+        return
+      }
+
+      // Handle comparison evaluation draft save
       const dimensionScores: Record<string, string> = {}
       Object.entries(responses).forEach(([dimension, value]) => {
-        if (value.includes('A')) {
-          dimensionScores[dimension] = 'A'
-        } else if (value.includes('B')) {
-          dimensionScores[dimension] = 'B'
-        } else {
-          dimensionScores[dimension] = 'Equal'
+        if (typeof value === 'string') {
+          if (value.includes('A')) {
+            dimensionScores[dimension] = 'A'
+          } else if (value.includes('B')) {
+            dimensionScores[dimension] = 'B'
+          } else {
+            dimensionScores[dimension] = 'Equal'
+          }
         }
       })
 
-      console.log('Saving draft with data:', {
+      console.log('Saving comparison draft with data:', {
         comparisonId: params.id,
         participantId,
         sessionId,
@@ -337,7 +439,7 @@ export default function EvaluatePage() {
     } finally {
       setSaving(false)
     }
-  }, [comparison, responses, actualComparisonId, params.id, startTime, getSessionId, toast, router, submitting])
+  }, [comparison, videoTask, evaluationMode, responses, actualComparisonId, params.id, startTime, getSessionId, toast, router, submitting])
 
   // Debounced auto-save when responses change
   useEffect(() => {
@@ -362,21 +464,21 @@ export default function EvaluatePage() {
 
   // Force loading state to false after videos should have loaded
   useEffect(() => {
-    if (comparison) {
+    if (comparison || videoTask) {
       const timer = setTimeout(() => {
         console.log('Forcing video loaded states to true')
         setVideoLoadedA(true)
-        setVideoLoadedB(true)
+        if (comparison) setVideoLoadedB(true) // Only set B for comparison mode
       }, 3000) // 3 seconds should be enough for videos to load
 
       return () => clearTimeout(timer)
     }
-  }, [comparison])
+  }, [comparison, videoTask])
 
   // Set up video event listeners for Video A
   useEffect(() => {
     const videoA = videoARef.current
-    if (!videoA || !comparison) return
+    if (!videoA || (!comparison && !videoTask)) return
 
     const handlePlayA = () => {
       console.log('Video A started playing')
@@ -443,7 +545,49 @@ export default function EvaluatePage() {
       videoA.removeEventListener('canplay', handleCanPlayA)
       videoA.removeEventListener('error', handleErrorA)
     }
-  }, [comparison, playbackSpeed, volumeA])
+  }, [comparison, videoTask, playbackSpeed, volumeA])
+
+  // Additional event listeners specifically for single video mode to ensure they're attached after video loads
+  useEffect(() => {
+    if (evaluationMode === 'single_video' && videoTask && videoARef.current) {
+      const video = videoARef.current;
+      
+      const handleSingleVideoPlay = () => {
+        console.log('Single video started playing');
+        setPlayingA(true);
+      };
+      
+      const handleSingleVideoPause = () => {
+        console.log('Single video paused');
+        setPlayingA(false);
+      };
+      
+      const handleSingleVideoTimeUpdate = () => {
+        setCurrentTimeA(video.currentTime);
+      };
+      
+      const handleSingleVideoLoadedMetadata = () => {
+        console.log('Single video metadata loaded, duration:', video.duration);
+        setDurationA(video.duration);
+        video.playbackRate = playbackSpeed;
+        video.volume = volumeA;
+      };
+
+      // Add event listeners
+      video.addEventListener('play', handleSingleVideoPlay);
+      video.addEventListener('pause', handleSingleVideoPause);
+      video.addEventListener('timeupdate', handleSingleVideoTimeUpdate);
+      video.addEventListener('loadedmetadata', handleSingleVideoLoadedMetadata);
+
+      return () => {
+        // Clean up event listeners
+        video.removeEventListener('play', handleSingleVideoPlay);
+        video.removeEventListener('pause', handleSingleVideoPause);
+        video.removeEventListener('timeupdate', handleSingleVideoTimeUpdate);
+        video.removeEventListener('loadedmetadata', handleSingleVideoLoadedMetadata);
+      };
+    }
+  }, [evaluationMode, videoTask, playbackSpeed, volumeA]);
 
   // Set up video event listeners for Video B
   useEffect(() => {
@@ -687,6 +831,22 @@ export default function EvaluatePage() {
       return
     }
 
+    // For single video mode, validate that all ratings are valid integers between 1-5
+    if (evaluationMode === 'single_video') {
+      const invalidRatings = dimensions.filter(dim => {
+        const rating = responses[dim]
+        return !rating || rating < 1 || rating > 5 || !Number.isInteger(rating)
+      })
+      if (invalidRatings.length > 0) {
+        toast({
+          title: 'Invalid Ratings',
+          description: 'All ratings must be between 1 and 5',
+          variant: 'destructive'
+        })
+        return
+      }
+    }
+
     // Clear any pending auto-save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
@@ -695,65 +855,112 @@ export default function EvaluatePage() {
     setSubmitting(true)
 
     try {
-      const dimensionScores: Record<string, string> = {}
-      const detailedRatings: Record<string, string> = {}
-
-      Object.entries(responses).forEach(([dimension, value]) => {
-        if (value.includes('A')) {
-          dimensionScores[dimension] = 'A'
-        } else if (value.includes('B')) {
-          dimensionScores[dimension] = 'B'
-        } else {
-          dimensionScores[dimension] = 'Equal'
-        }
-        detailedRatings[dimension] = value
-      })
-
       // Get participant info if this is a Prolific session
       const participantId = sessionStorage.getItem('participant_id')
       const experimentId = sessionStorage.getItem('experiment_id')
       const prolificPid = sessionStorage.getItem('prolific_pid')
       const sessionId = getSessionId()
 
-      const submitResponse = await fetch('/api/submit-evaluation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          comparison_id: actualComparisonId || params.id,
-          dimension_scores: dimensionScores,
-          detailed_ratings: detailedRatings,
-          completion_time_seconds: (Date.now() - startTime) / 1000,
-          participant_id: participantId,
-          experiment_id: experimentId,
-          evaluator_id: prolificPid || 'anonymous',
-          session_id: sessionId
+      let submitResponse, submitResult
+
+      if (evaluationMode === 'single_video') {
+        // Handle single video evaluation submission
+        submitResponse = await fetch('/api/submit-single-video-evaluation', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            video_task_id: videoTask?.video_task_id,
+            dimension_scores: responses,
+            completion_time_seconds: (Date.now() - startTime) / 1000,
+            participant_id: participantId,
+            experiment_id: experimentId,
+            evaluator_id: prolificPid || 'anonymous',
+            session_id: sessionId
+          })
         })
-      })
 
-      const submitResult = await submitResponse.json()
+        submitResult = await submitResponse.json()
 
-      toast({
-        title: 'Success',
-        description: 'Your evaluation has been submitted'
-      })
-
-      // Check if there's a next comparison to evaluate
-      if (submitResult.next_comparison_id) {
         toast({
-          title: 'Next Comparison',
-          description: 'Loading the next comparison for evaluation...'
+          title: 'Success',
+          description: 'Your evaluation has been submitted'
         })
-        // Navigate to the next comparison
-        router.push(`/evaluate/${submitResult.next_comparison_id}`)
-      } else {
-        // Check if this is a Prolific session
-        const isProlific = sessionStorage.getItem('is_prolific')
-        if (isProlific) {
-          router.push('/prolific/complete')
+
+        // Check if there's a next video task to evaluate
+        if (submitResult.next_video_task_id) {
+          toast({
+            title: 'Next Video',
+            description: 'Loading the next video for evaluation...'
+          })
+          router.push(`/evaluate/${submitResult.next_video_task_id}`)
         } else {
-          router.push('/thank-you')
+          // Check if this is a Prolific session
+          const isProlific = sessionStorage.getItem('is_prolific')
+          if (isProlific) {
+            router.push('/prolific/complete')
+          } else {
+            router.push('/thank-you')
+          }
+        }
+      } else {
+        // Handle comparison evaluation submission
+        const dimensionScores: Record<string, string> = {}
+        const detailedRatings: Record<string, string> = {}
+
+        Object.entries(responses).forEach(([dimension, value]) => {
+          if (typeof value === 'string') {
+            if (value.includes('A')) {
+              dimensionScores[dimension] = 'A'
+            } else if (value.includes('B')) {
+              dimensionScores[dimension] = 'B'
+            } else {
+              dimensionScores[dimension] = 'Equal'
+            }
+            detailedRatings[dimension] = value
+          }
+        })
+
+        submitResponse = await fetch('/api/submit-evaluation', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            comparison_id: actualComparisonId || params.id,
+            dimension_scores: dimensionScores,
+            detailed_ratings: detailedRatings,
+            completion_time_seconds: (Date.now() - startTime) / 1000,
+            participant_id: participantId,
+            experiment_id: experimentId,
+            evaluator_id: prolificPid || 'anonymous',
+            session_id: sessionId
+          })
+        })
+
+        submitResult = await submitResponse.json()
+
+        toast({
+          title: 'Success',
+          description: 'Your evaluation has been submitted'
+        })
+
+        // Check if there's a next comparison to evaluate
+        if (submitResult.next_comparison_id) {
+          toast({
+            title: 'Next Comparison',
+            description: 'Loading the next comparison for evaluation...'
+          })
+          router.push(`/evaluate/${submitResult.next_comparison_id}`)
+        } else {
+          // Check if this is a Prolific session
+          const isProlific = sessionStorage.getItem('is_prolific')
+          if (isProlific) {
+            router.push('/prolific/complete')
+          } else {
+            router.push('/thank-you')
+          }
         }
       }
     } catch (error) {
@@ -776,10 +983,10 @@ export default function EvaluatePage() {
     )
   }
 
-  if (!comparison) {
+  if (!comparison && !videoTask) {
     return (
       <div className="text-center">
-        <p>Comparison not found</p>
+        <p>{evaluationMode === 'single_video' ? 'Video task not found' : 'Comparison not found'}</p>
         <Button onClick={() => router.push('/')} className="mt-4">
           Go Back
         </Button>
@@ -792,7 +999,9 @@ export default function EvaluatePage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-2xl text-slate-100">Video Comparison Evaluation</CardTitle>
+            <CardTitle className="text-2xl text-slate-100">
+              {evaluationMode === 'single_video' ? 'Single Video Evaluation' : 'Video Comparison Evaluation'}
+            </CardTitle>
             {lastSaved && (
               <div className="flex items-center gap-2 text-sm text-slate-300">
                 {saving ? (
@@ -812,11 +1021,29 @@ export default function EvaluatePage() {
           <div className="mt-2 space-y-1 text-sm">
             <div className="flex items-center gap-2">
               <Badge variant="default" className="text-sm bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
-                {comparison.scenario_metadata.name || comparison.scenario_id}
+                {evaluationMode === 'single_video' 
+                  ? (videoTask?.scenario_metadata.name || videoTask?.scenario_id)
+                  : (comparison?.scenario_metadata.name || comparison?.scenario_id)
+                }
               </Badge>
-              <span className="text-sm text-slate-400">Scenario</span>
+              {evaluationMode === 'single_video' && (
+                <>
+                  <Badge variant="outline" className="text-sm">
+                    {videoTask?.model_name}
+                  </Badge>
+                  <span className="text-sm text-slate-400">Model</span>
+                </>
+              )}
+              {evaluationMode === 'comparison' && (
+                <span className="text-sm text-slate-400">Scenario</span>
+              )}
             </div>
-            {comparison.scenario_metadata.description && (
+            {evaluationMode === 'single_video' && videoTask?.scenario_metadata.description && (
+              <p className="text-sm text-slate-300 mt-2">
+                {videoTask.scenario_metadata.description}
+              </p>
+            )}
+            {evaluationMode === 'comparison' && comparison?.scenario_metadata.description && (
               <p className="text-sm text-slate-300 mt-2">
                 {comparison.scenario_metadata.description}
               </p>
@@ -845,50 +1072,98 @@ export default function EvaluatePage() {
           <div className="bg-gradient-to-r from-slate-800/60 to-slate-700/60 border border-slate-600/50 rounded-lg p-4 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <Button
-                  onClick={handlePlayBoth}
-                  size="lg"
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {playingA && playingB ? (
-                    <>
-                      <Pause className="mr-2 h-5 w-5" />
-                      Pause Both
-                    </>
-                  ) : (
-                    <>
-                      <Play className="mr-2 h-5 w-5" />
-                      Play Both
-                    </>
-                  )}
-                </Button>
+                {evaluationMode === 'single_video' ? (
+                  // Single video controls
+                  <>
+                    <Button
+                      onClick={async () => {
+                        const video = videoARef.current;
+                        if (video) {
+                          try {
+                            if (video.paused) {
+                              await video.play();
+                            } else {
+                              video.pause();
+                            }
+                          } catch (error) {
+                            console.error('Error controlling video:', error);
+                          }
+                        }
+                      }}
+                      size="lg"
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      {playingA ? (
+                        <>
+                          <Pause className="mr-2 h-5 w-5" />
+                          Pause
+                        </>
+                      ) : (
+                        <>
+                          <Play className="mr-2 h-5 w-5" />
+                          Play
+                        </>
+                      )}
+                    </Button>
 
-                <Button
-                  onClick={toggleSync}
-                  variant={syncMode ? "default" : "outline"}
-                  size="sm"
-                >
-                  {syncMode ? (
-                    <>
-                      <Link className="mr-2 h-4 w-4" />
-                      Synced
-                    </>
-                  ) : (
-                    <>
-                      <Unlink className="mr-2 h-4 w-4" />
-                      Independent
-                    </>
-                  )}
-                </Button>
+                    <Button
+                      onClick={() => handleSeek('A', 0)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Restart
+                    </Button>
+                  </>
+                ) : (
+                  // Comparison mode controls
+                  <>
+                    <Button
+                      onClick={handlePlayBoth}
+                      size="lg"
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {playingA && playingB ? (
+                        <>
+                          <Pause className="mr-2 h-5 w-5" />
+                          Pause Both
+                        </>
+                      ) : (
+                        <>
+                          <Play className="mr-2 h-5 w-5" />
+                          Play Both
+                        </>
+                      )}
+                    </Button>
 
-                <Button
-                  onClick={handleRestart}
-                  variant="outline"
-                  size="sm"
-                >
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Restart
-                </Button>
+                    <Button
+                      onClick={toggleSync}
+                      variant={syncMode ? "default" : "outline"}
+                      size="sm"
+                    >
+                      {syncMode ? (
+                        <>
+                          <Link className="mr-2 h-4 w-4" />
+                          Synced
+                        </>
+                      ) : (
+                        <>
+                          <Unlink className="mr-2 h-4 w-4" />
+                          Independent
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      onClick={handleRestart}
+                      variant="outline"
+                      size="sm"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Restart
+                    </Button>
+                  </>
+                )}
               </div>
 
               <div className="flex items-center gap-4">
@@ -926,7 +1201,9 @@ export default function EvaluatePage() {
           </div>
 
           {/* Video Display */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {evaluationMode === 'comparison' ? (
+            // Comparison mode: Two videos side by side
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Model A */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1153,6 +1430,91 @@ export default function EvaluatePage() {
               </div>
             </div>
           </div>
+          ) : (
+            // Single video mode: One centered video
+            <div className="flex justify-center mb-6">
+              <div className={`relative bg-black rounded-lg overflow-hidden ${videoSize === 'large' ? 'w-full max-w-6xl' : videoSize === 'medium' ? 'w-full max-w-4xl' : 'w-full max-w-2xl'}`}>
+                <div className="relative pt-[56.25%]">
+                  <video
+                    ref={videoARef}
+                    src={videoTask?.video_path}
+                    className="absolute inset-0 w-full h-full object-contain"
+                    loop
+                    playsInline
+                    preload="metadata"
+                  />
+                
+                  {/* Video overlay with time */}
+                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                    {Math.floor(currentTimeA)}s / {Math.floor(durationA)}s
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Single Video Controls (only for single video mode) */}
+          {evaluationMode === 'single_video' && (
+            <div className="bg-slate-800/50 border border-slate-600/50 rounded-lg p-4 mb-6">
+              {/* Progress bar */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-300">
+                    <span>Progress</span>
+                    <span>{Math.round((currentTimeA / durationA) * 100) || 0}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={durationA || 100}
+                    value={currentTimeA}
+                    onChange={(e) => handleSeek('A', Number(e.target.value))}
+                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer 
+                              focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-opacity-50
+                              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400 [&::-webkit-slider-thumb]:shadow-lg"
+                  />
+                </div>
+
+                {/* Volume control */}
+                <div className="flex items-center gap-2">
+                  <Volume2 className="h-4 w-4 text-slate-400" />
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={volumeA}
+                    onChange={(e) => handleVolumeChange('A', Number(e.target.value))}
+                    className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer
+                              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3
+                              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-purple-400"
+                  />
+                  <span className="text-xs text-slate-300 w-8">{Math.round(volumeA * 100)}%</span>
+                </div>
+
+                {/* Quick seek buttons */}
+                <div className="flex justify-center gap-2">
+                  <Button
+                    onClick={() => handleSeek('A', Math.max(0, currentTimeA - 5))}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <SkipBack className="h-3 w-3 mr-1" />
+                    -5s
+                  </Button>
+                  <Button
+                    onClick={() => handleSeek('A', Math.min(durationA, currentTimeA + 5))}
+                    size="sm"
+                    variant="outline"
+                  >
+                    +5s
+                    <SkipForward className="h-3 w-3 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1181,10 +1543,58 @@ export default function EvaluatePage() {
               </div>
             )}
 
-            <RadioGroup
-              value={responses[dimension] || ''}
-              onValueChange={(value) => setResponses({ ...responses, [dimension]: value })}
-            >
+            {evaluationMode === 'single_video' ? (
+              // Star Rating Interface for single video
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-200">Rating:</span>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        onClick={() => setResponses({ ...responses, [dimension]: rating })}
+                        className={`p-1 rounded-full transition-colors ${
+                          responses[dimension] && responses[dimension] >= rating
+                            ? 'text-yellow-400 hover:text-yellow-300'
+                            : 'text-slate-500 hover:text-slate-400'
+                        }`}
+                      >
+                        <Star 
+                          className={`h-8 w-8 ${
+                            responses[dimension] && responses[dimension] >= rating 
+                              ? 'fill-current' 
+                              : ''
+                          }`} 
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Rating Labels */}
+                <div className="flex justify-between text-xs text-slate-400 px-1">
+                  <span>Poor</span>
+                  <span>Fair</span>
+                  <span>Good</span>
+                  <span>Very Good</span>
+                  <span>Excellent</span>
+                </div>
+                
+                {/* Current Rating Display */}
+                {responses[dimension] && (
+                  <div className="text-center">
+                    <Badge variant="outline" className="bg-yellow-500/10 text-yellow-300 border-yellow-500/30">
+                      {responses[dimension]} - {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][responses[dimension] as number]}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Radio buttons for comparison
+              <RadioGroup
+                value={responses[dimension] as string || ''}
+                onValueChange={(value) => setResponses({ ...responses, [dimension]: value })}
+              >
               <div className="space-y-3">
                 <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
                   <RadioGroupItem
@@ -1227,7 +1637,8 @@ export default function EvaluatePage() {
                   <Label htmlFor={`${dimension}_B_much`} className="text-slate-200 font-medium cursor-pointer">Model B is much better</Label>
                 </div>
               </div>
-            </RadioGroup>
+              </RadioGroup>
+            )}
           </CardContent>
         </Card>
       ))}

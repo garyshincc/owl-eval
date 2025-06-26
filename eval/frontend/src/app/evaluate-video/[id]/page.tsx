@@ -151,7 +151,7 @@ export default function EvaluateVideoPage() {
               const videoTasksList = await videoTasksResponse.json()
               if (videoTasksList.length > 0) {
                 // Get the first available video task (you might want to implement more sophisticated logic here)
-                const firstVideoTaskId = videoTasksList[0].video_task_id
+                const firstVideoTaskId = videoTasksList[0].id
                 response = await fetch(`/api/video-tasks/${firstVideoTaskId}`)
                 if (response.ok) {
                   data = await response.json()
@@ -467,7 +467,7 @@ export default function EvaluateVideoPage() {
           title: 'Next Video',
           description: 'Loading the next video for evaluation...'
         })
-        router.push(`/evaluate-video/${submitResult.next_video_task_id}`)
+        router.push(`/evaluate/${submitResult.next_video_task_id}`)
       } else {
         // Check if this is a Prolific session
         const isProlific = sessionStorage.getItem('is_prolific')

@@ -171,7 +171,7 @@ export default function Home() {
                 ? videoTasks.map((videoTask) => (
                     <Link
                       key={videoTask.id}
-                      href={`/evaluate-video/${videoTask.id}`}
+                      href={`/evaluate/${videoTask.id}`}
                     >
                       <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
                         <CardContent className="flex items-center justify-between py-4">

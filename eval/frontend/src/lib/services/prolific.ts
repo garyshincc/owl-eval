@@ -149,6 +149,7 @@ export class ProlificService {
     }
     const studyCompletionCode = generateCompletionCode();
 
+    // Use unified URL format for both comparison and single video evaluations
     const externalStudyUrl = `${appUrl}/prolific?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_ID%}}&STUDY_ID={{%STUDY_ID%}}&experiment_id=${request.experimentId}`;
 
     // Get demographics from experiment config

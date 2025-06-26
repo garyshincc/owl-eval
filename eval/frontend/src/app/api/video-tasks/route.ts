@@ -60,13 +60,14 @@ export async function GET(request: Request) {
     }
     
     const videoTaskList = videoTasks.map(videoTask => ({
+      video_task_id: videoTask.id,
       id: videoTask.id,
       scenario_id: videoTask.scenarioId,
       model_name: videoTask.modelName,
       video_path: videoTask.videoPath,
       created_at: videoTask.createdAt.toISOString(),
       num_evaluations: videoTask._count.singleVideoEvals,
-      evaluation_url: `/evaluate-video/${videoTask.id}`
+      evaluation_url: `/evaluate/${videoTask.id}`
     }))
     
     return NextResponse.json(videoTaskList)
