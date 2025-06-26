@@ -339,7 +339,7 @@ export default function EvaluatePage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            videoTaskId: videoTask?.video_task_id,
+            videoTaskId: videoTask?.id,
             participantId,
             experimentId,
             prolificPid,
@@ -845,7 +845,7 @@ export default function EvaluatePage() {
     if (evaluationMode === 'single_video') {
       const invalidRatings = dimensions.filter(dim => {
         const rating = responses[dim]
-        return !rating || rating < 1 || rating > 5 || !Number.isInteger(rating)
+        return !rating || typeof rating !== 'number' || rating < 1 || rating > 5 || !Number.isInteger(rating)
       })
       if (invalidRatings.length > 0) {
         toast({
@@ -881,7 +881,7 @@ export default function EvaluatePage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            video_task_id: videoTask?.video_task_id,
+            video_task_id: videoTask?.id,
             dimension_scores: responses,
             completion_time_seconds: (Date.now() - startTime) / 1000,
             participant_id: participantId,
@@ -1055,7 +1055,7 @@ export default function EvaluatePage() {
             )}
             {evaluationMode === 'comparison' && comparison?.scenario_metadata.description && (
               <p className="text-sm text-slate-300 mt-2">
-                {comparison.scenario_metadata.description}
+                {comparison?.scenario_metadata.description}
               </p>
             )}
           </div>
@@ -1239,7 +1239,7 @@ export default function EvaluatePage() {
                 <div className="relative pt-[56.25%]">
                   <video
                     ref={videoARef}
-                    src={comparison.model_a_video_path}
+                    src={comparison?.model_a_video_path}
                     className="absolute inset-0 w-full h-full object-contain"
                     loop
                     playsInline
@@ -1352,7 +1352,7 @@ export default function EvaluatePage() {
                 <div className="relative pt-[56.25%]">
                   <video
                     ref={videoBRef}
-                    src={comparison.model_b_video_path}
+                    src={comparison?.model_b_video_path}
                     className="absolute inset-0 w-full h-full object-contain"
                     loop
                     playsInline
@@ -1566,14 +1566,14 @@ export default function EvaluatePage() {
                         key={rating}
                         onClick={() => setResponses({ ...responses, [dimension]: rating })}
                         className={`p-1 rounded-full transition-colors ${
-                          responses[dimension] && responses[dimension] >= rating
+                          responses[dimension] && typeof responses[dimension] === 'number' && responses[dimension] >= rating
                             ? 'text-yellow-400 hover:text-yellow-300'
                             : 'text-slate-500 hover:text-slate-400'
                         }`}
                       >
                         <Star 
                           className={`h-8 w-8 ${
-                            responses[dimension] && responses[dimension] >= rating 
+                            responses[dimension] && typeof responses[dimension] === 'number' && responses[dimension] >= rating 
                               ? 'fill-current' 
                               : ''
                           }`} 

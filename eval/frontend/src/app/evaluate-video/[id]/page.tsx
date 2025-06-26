@@ -219,7 +219,7 @@ export default function EvaluateVideoPage() {
     } finally {
       setLoading(false)
     }
-  }, [params.id, toast, getSessionId])
+  }, [params.id, toast, getSessionId, router])
 
   // Auto-save functionality
   const saveDraft = useCallback(async () => {
@@ -321,6 +321,27 @@ export default function EvaluateVideoPage() {
     }
   }, [videoTask])
 
+  // Video control functions
+  const handlePlayPause = useCallback(() => {
+    if (videoRef.current) {
+      if (playing) {
+        videoRef.current.pause()
+      } else {
+        videoRef.current.play()
+      }
+    }
+  }, [playing])
+
+  const handleSeek = useCallback((time: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = time
+    }
+  }, [])
+
+  const handleRestart = useCallback(() => {
+    if (videoRef.current) videoRef.current.currentTime = 0
+  }, [])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -351,24 +372,7 @@ export default function EvaluateVideoPage() {
 
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [currentTime, duration])
-
-  // Video control functions
-  const handlePlayPause = () => {
-    if (videoRef.current) {
-      if (playing) {
-        videoRef.current.pause()
-      } else {
-        videoRef.current.play()
-      }
-    }
-  }
-
-  const handleSeek = (time: number) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = time
-    }
-  }
+  }, [currentTime, duration, handlePlayPause, handleSeek, handleRestart])
 
   const handleVolumeChange = (newVolume: number) => {
     if (videoRef.current) {
@@ -380,10 +384,6 @@ export default function EvaluateVideoPage() {
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed)
     if (videoRef.current) videoRef.current.playbackRate = speed
-  }
-
-  const handleRestart = () => {
-    if (videoRef.current) videoRef.current.currentTime = 0
   }
 
   const getVideoSizeClass = () => {

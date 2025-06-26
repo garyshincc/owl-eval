@@ -197,7 +197,7 @@ export function EnhancedAnalyticsDashboard({
     } finally {
       setDemographicsLoading(false)
     }
-  }, [experiments.length, selectedGroup, includeAnonymous]) // Remove filters dependencies to avoid infinite loops
+  }, [selectedGroup, includeAnonymous, experiments, filters.ageMin, filters.ageMax])
 
   // Apply local filters immediately (for participant count updates)
   const applyLocalFilters = useCallback(() => {
@@ -306,7 +306,7 @@ export function EnhancedAnalyticsDashboard({
       }
       fetchData()
     }
-  }, [selectedExperiment, allParticipants.length, includeAnonymous])
+  }, [selectedExperiment, allParticipants.length, includeAnonymous, filters])
 
   // Initial performance data load when component mounts
   useEffect(() => {
@@ -382,7 +382,7 @@ export function EnhancedAnalyticsDashboard({
       )
       onExperimentChange(sortedExperiments[0].id)
     }
-  }, [experiments.length, onExperimentChange]) // Remove selectedExperiment from dependencies
+  }, [experiments.length, onExperimentChange, experiments, selectedExperiment])
 
   // Cleanup timeout on unmount
   useEffect(() => {
