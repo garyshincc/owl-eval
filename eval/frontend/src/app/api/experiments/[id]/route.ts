@@ -191,18 +191,10 @@ export async function DELETE(
       where: { experimentId: id }
     });
 
-    // 2. Delete ALL single video evaluations that reference these participants
-    // (not just those with matching experimentId, since participants might have 
-    // evaluations from different experiments due to session handling)
-    if (participantIds.length > 0) {
-      await prisma.singleVideoEvaluation.deleteMany({
-        where: { 
-          participantId: {
-            in: participantIds
-          }
-        }
-      });
-    }
+    // 2. Delete ALL single video evaluations for this experiment
+    await prisma.singleVideoEvaluation.deleteMany({
+      where: { experimentId: id }
+    });
 
     // 3. Delete participants (they are no longer referenced by any evaluations)
     await prisma.participant.deleteMany({
