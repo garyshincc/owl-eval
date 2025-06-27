@@ -16,6 +16,12 @@ export async function GET(request: Request) {
       videoTasks = await prisma.videoTask.findMany({
         where: { experimentId },
         include: {
+          experiment: {
+            select: {
+              name: true,
+              createdAt: true
+            }
+          },
           _count: {
             select: { 
               singleVideoEvals: {
@@ -29,10 +35,10 @@ export async function GET(request: Request) {
         orderBy: { createdAt: 'desc' }
       })
     } else {
-      // Get all active experiments' video tasks for non-Prolific users
+      // Get all ready/active experiments' video tasks for non-Prolific users
       const activeExperiments = await prisma.experiment.findMany({
         where: { 
-          status: 'active',
+          status: { in: ['ready', 'active'] },
           evaluationMode: 'single_video'
         },
         select: { id: true }
@@ -45,6 +51,12 @@ export async function GET(request: Request) {
           }
         },
         include: {
+          experiment: {
+            select: {
+              name: true,
+              createdAt: true
+            }
+          },
           _count: {
             select: { 
               singleVideoEvals: {
@@ -67,7 +79,9 @@ export async function GET(request: Request) {
       video_path: videoTask.videoPath,
       created_at: videoTask.createdAt.toISOString(),
       num_evaluations: videoTask._count.singleVideoEvals,
-      evaluation_url: `/evaluate/${videoTask.id}`
+      evaluation_url: `/evaluate/${videoTask.id}`,
+      experiment_name: videoTask.experiment?.name,
+      experiment_created_at: videoTask.experiment?.createdAt.toISOString()
     }))
     
     return NextResponse.json(videoTaskList)

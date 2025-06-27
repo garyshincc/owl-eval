@@ -164,12 +164,38 @@ export default function EvaluatePage() {
         if (videoResponse.ok) {
           // It's a video task - handle as single video evaluation
           const videoData = await videoResponse.json()
+          
+          // Validate critical video task data
+          if (!videoData.video_task_id || !videoData.video_path) {
+            console.error('Invalid video task data:', videoData)
+            toast({
+              title: 'Session Initialization Failed',
+              description: 'Failed to initialize your session, please contact support',
+              variant: 'destructive'
+            })
+            router.push('/thank-you')
+            return
+          }
+          
           setVideoTask(videoData)
           setEvaluationMode('single_video')
           
           // Load any existing draft for single video
           const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
           const sessionId = getSessionId()
+          
+          // Validate session ID generation
+          if (!sessionId) {
+            console.error('Failed to generate session ID')
+            toast({
+              title: 'Session Initialization Failed',
+              description: 'Failed to initialize your session, please contact support',
+              variant: 'destructive'
+            })
+            router.push('/thank-you')
+            return
+          }
+          
           const draftResponse = await fetch(`/api/single-video-evaluations/draft?videoTaskId=${videoData.video_task_id}&participantId=${participantId}&sessionId=${sessionId}`)
           
           if (draftResponse.ok) {
@@ -196,45 +222,29 @@ export default function EvaluatePage() {
                 })
               }
             }
+          } else if (draftResponse.status >= 500) {
+            // Server error loading draft - could indicate session issues
+            console.error('Server error loading draft:', draftResponse.status)
+            toast({
+              title: 'Session Initialization Failed',
+              description: 'Failed to initialize your session, please contact support',
+              variant: 'destructive'
+            })
+            router.push('/thank-you')
+            return
           }
           setLoading(false)
           return
-        }
-
-        // If not found, try as experiment slug to get a random comparison
-        const experimentsResponse = await fetch(`/api/experiments`)
-        if (experimentsResponse.ok) {
-          const experiments = await experimentsResponse.json()
-          const experiment = experiments.find((exp: any) => exp.slug === params.id)
-
-          if (experiment) {
-            if (experiment.evaluationMode === 'single_video') {
-              // Get first video task for this experiment
-              const videoTasksResponse = await fetch(`/api/video-tasks?experimentId=${experiment.id}`)
-              if (videoTasksResponse.ok) {
-                const videoTasks = await videoTasksResponse.json()
-                if (videoTasks.length > 0) {
-                  // Redirect to unified URL with first video task ID
-                  router.push(`/evaluate/${videoTasks[0].id}`)
-                  return
-                }
-              }
-            } else if (experiment._count.comparisons > 0) {
-              // Get comparisons for this experiment
-              const comparisonsResponse = await fetch(`/api/comparisons?experimentId=${experiment.id}`)
-              if (comparisonsResponse.ok) {
-                const comparisons = await comparisonsResponse.json()
-                if (comparisons.length > 0) {
-                  // Get the first comparison
-                  const comparisonId = comparisons[0].comparison_id
-                  setActualComparisonId(comparisonId)
-                  response = await fetch(`/api/comparisons/${comparisonId}`)
-                  // Update the URL to reflect the actual comparison ID
-                  window.history.replaceState({}, '', `/evaluate/${comparisonId}`)
-                }
-              }
-            }
-          }
+        } else {
+          // Neither comparison nor video task found
+          console.error('No evaluation task found for ID:', params.id)
+          toast({
+            title: 'Evaluation Not Found',
+            description: 'The requested evaluation could not be found',
+            variant: 'destructive'
+          })
+          router.push('/thank-you')
+          return
         }
       }
 
@@ -459,8 +469,19 @@ export default function EvaluatePage() {
   }, [responses, saveDraft])
 
   useEffect(() => {
+    // Check if screening has been completed before allowing evaluation
+    // Skip screening check if coming from admin (referrer contains 'admin')
+    const screeningCompleted = sessionStorage.getItem('screening_completed')
+    const isFromAdmin = document.referrer.includes('/admin') || window.location.search.includes('admin=true')
+    
+    if (!screeningCompleted && !isFromAdmin) {
+      // Redirect to screening page if not completed
+      router.push('/screening')
+      return
+    }
+    
     fetchComparison()
-  }, [fetchComparison])
+  }, [fetchComparison, router])
 
   // Force loading state to false after videos should have loaded
   useEffect(() => {
@@ -858,8 +879,8 @@ export default function EvaluatePage() {
         if (!submitResponse.ok) {
           console.error('Single video submission failed:', submitResult);
           toast({
-            title: 'Submission Failed',
-            description: submitResult.error || 'Failed to submit evaluation',
+            title: 'Session Initialization Failed',
+            description: 'Failed to initialize your session, please contact support',
             variant: 'destructive'
           });
           return;

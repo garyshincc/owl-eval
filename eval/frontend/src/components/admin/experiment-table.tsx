@@ -104,6 +104,7 @@ export function ExperimentTable({
   const getStatusColor = (status: string, archived: boolean) => {
     if (archived) return 'bg-destructive/10 text-destructive border-destructive/20'
     switch (status) {
+      case 'ready': return 'bg-green-500/10 text-green-600 border-green-500/20'
       case 'active': return 'bg-secondary/10 text-secondary border-secondary/20'
       case 'completed': return 'bg-primary/10 text-primary border-primary/20'
       case 'paused': return 'bg-accent/10 text-accent border-accent/20'
@@ -526,6 +527,9 @@ export function ExperimentTable({
               <DropdownMenuItem onClick={() => setStatusFilter('all')}>
                 All Status
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('ready')}>
+                Ready
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setStatusFilter('active')}>
                 Active
               </DropdownMenuItem>
@@ -652,8 +656,80 @@ export function ExperimentTable({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
-                            onClick={() => {
-                              window.open(`/evaluate/${exp.slug}`, '_blank')
+                            onClick={async () => {
+                              try {
+                                console.log('Opening evaluation for experiment:', { id: exp.id, slug: exp.slug, name: exp.name, evaluationMode: exp.evaluationMode, status: exp.status })
+                                
+                                // Get the first available task for this experiment
+                                if (exp.evaluationMode === 'single_video') {
+                                  console.log('Fetching video tasks for experiment:', exp.id)
+                                  const response = await fetch(`/api/video-tasks?experimentId=${exp.id}`)
+                                  console.log('Video tasks response:', response.status, response.ok)
+                                  
+                                  if (response.ok) {
+                                    const videoTasks = await response.json()
+                                    console.log('Video tasks found:', videoTasks.length, videoTasks)
+                                    
+                                    if (videoTasks.length > 0) {
+                                      const url = `/evaluate/${videoTasks[0].id}?admin=true`
+                                      console.log('Opening URL:', url)
+                                      // Create a temporary link element to ensure new tab (not popup)
+                                      const link = document.createElement('a')
+                                      link.href = url
+                                      link.target = '_blank'
+                                      link.rel = 'noopener noreferrer'
+                                      document.body.appendChild(link)
+                                      link.click()
+                                      document.body.removeChild(link)
+                                      return
+                                    }
+                                  } else {
+                                    const errorText = await response.text()
+                                    console.error('Video tasks API error:', errorText)
+                                  }
+                                } else {
+                                  console.log('Fetching comparisons for experiment:', exp.id)
+                                  const response = await fetch(`/api/comparisons?experimentId=${exp.id}`)
+                                  console.log('Comparisons response:', response.status, response.ok)
+                                  
+                                  if (response.ok) {
+                                    const comparisons = await response.json()
+                                    console.log('Comparisons found:', comparisons.length, comparisons)
+                                    
+                                    if (comparisons.length > 0) {
+                                      const url = `/evaluate/${comparisons[0].comparison_id}?admin=true`
+                                      console.log('Opening URL:', url)
+                                      // Create a temporary link element to ensure new tab (not popup)
+                                      const link = document.createElement('a')
+                                      link.href = url
+                                      link.target = '_blank'
+                                      link.rel = 'noopener noreferrer'
+                                      document.body.appendChild(link)
+                                      link.click()
+                                      document.body.removeChild(link)
+                                      return
+                                    }
+                                  } else {
+                                    const errorText = await response.text()
+                                    console.error('Comparisons API error:', errorText)
+                                  }
+                                }
+                                
+                                // Fallback: no tasks available
+                                console.log('No tasks found, showing error toast')
+                                toast({
+                                  title: 'No Evaluations Available',
+                                  description: 'No evaluation tasks are currently available for this experiment',
+                                  variant: 'destructive'
+                                })
+                              } catch (error) {
+                                console.error('Error opening evaluation:', error)
+                                toast({
+                                  title: 'Error',
+                                  description: 'Failed to open evaluation',
+                                  variant: 'destructive'
+                                })
+                              }
                             }}
                           >
                             <ExternalLink className="h-4 w-4 mr-2" />
@@ -673,21 +749,76 @@ export function ExperimentTable({
                             </DropdownMenuItem>
                           )}
                           
-                          {/* Step 1: Draft, Unpublished -> Upload to Prolific */}
-                          {!exp.prolificStudyId && !exp.archived && exp.status === 'draft' && (
+                          {/* DRAFT Status: Ready or Ready+Publish options */}
+                          {exp.status === 'draft' && !exp.archived && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => handleUpdateStatus(exp.id, 'ready')}
+                                disabled={actionLoading === exp.id}
+                              >
+                                <Play className="h-4 w-4 mr-2" />
+                                Ready
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  setActionLoading(exp.id)
+                                  try {
+                                    // First make experiment ready
+                                    const response = await fetch(`/api/experiments/${exp.id}`, {
+                                      method: 'PUT',
+                                      headers: {
+                                        'Content-Type': 'application/json',
+                                      },
+                                      body: JSON.stringify({ status: 'ready' }),
+                                    })
+
+                                    if (!response.ok) {
+                                      throw new Error('Failed to update experiment status')
+                                    }
+
+                                    // Then upload to Prolific
+                                    if (onCreateProlificStudy) {
+                                      onCreateProlificStudy(exp.id)
+                                    }
+
+                                    // Refresh the experiments list
+                                    if (onRefresh) {
+                                      onRefresh()
+                                    }
+                                  } catch (error) {
+                                    console.error('Error in ready+publish flow:', error)
+                                    toast({
+                                      title: 'Error',
+                                      description: 'Failed to update experiment and publish to Prolific',
+                                      variant: 'destructive'
+                                    })
+                                  } finally {
+                                    setActionLoading(null)
+                                  }
+                                }}
+                                disabled={actionLoading === exp.id || !onCreateProlificStudy}
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                Ready and Publish to Prolific
+                              </DropdownMenuItem>
+                            </>
+                          )}
+
+                          {/* READY/UNPUBLISHED: Show Publish button */}
+                          {exp.status === 'ready' && !exp.prolificStudyId && !exp.archived && (
                             <DropdownMenuItem
                               onClick={() => onCreateProlificStudy?.(exp.id)}
                               disabled={!onCreateProlificStudy}
                             >
                               <Upload className="h-4 w-4 mr-2" />
-                              Upload to Prolific
+                              Publish to Prolific
                             </DropdownMenuItem>
                           )}
 
-                          {/* Step 2: Draft, Published (but not launched) -> Launch Experiment */}
-                          {exp.prolificStudyId && exp.status === 'draft' && (
+                          {/* READY/PUBLISHED: Show Launch button */}
+                          {exp.status === 'ready' && exp.prolificStudyId && (exp.config?.prolificStatus === 'UNPUBLISHED' || exp.config?.prolificStatus === 'DRAFT') && !exp.archived && (
                             <DropdownMenuItem
-                              onClick={() => handleLaunchExperiment(exp)}
+                              onClick={() => handleProlificAction(exp, 'publish')}
                               disabled={actionLoading === exp.id}
                             >
                               <DollarSign className="h-4 w-4 mr-2" />

@@ -75,10 +75,29 @@ export default function Home() {
           setComparisons(data)
         }
       } else {
-        // For non-Prolific sessions, default to comparisons
-        const response = await fetch('/api/comparisons')
-        const data = await response.json()
-        setComparisons(data)
+        // For non-Prolific sessions, fetch both comparisons and video tasks
+        console.log('Fetching all available experiments for non-Prolific user')
+        
+        const [comparisonsResponse, videoTasksResponse] = await Promise.all([
+          fetch('/api/comparisons'),
+          fetch('/api/video-tasks')
+        ])
+        
+        const comparisonsData = await comparisonsResponse.json()
+        const videoTasksData = await videoTasksResponse.json()
+        
+        console.log('Comparisons found:', comparisonsData.length, comparisonsData)
+        console.log('Video tasks found:', videoTasksData.length, videoTasksData)
+        
+        setComparisons(comparisonsData)
+        setVideoTasks(videoTasksData)
+        
+        // Set experiment mode based on what's available
+        if (videoTasksData.length > 0) {
+          setExperimentMode('single_video')
+        } else if (comparisonsData.length > 0) {
+          setExperimentMode('comparison')
+        }
       }
     } catch (error) {
       console.error('Error fetching tasks:', error)
@@ -93,53 +112,50 @@ export default function Home() {
         <CardHeader>
           <CardTitle className="text-slate-100">Welcome to the World Model Evaluation Study</CardTitle>
           <CardDescription className="text-slate-300">
-            Evaluate AI-generated world models
+            Evaluate AI-generated world models - Available studies and experiments
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-slate-200 leading-relaxed">
-            {experimentMode === 'single_video' 
-              ? 'You will be evaluating AI-generated world models. Each evaluation involves watching a single video and rating its quality across several dimensions.'
-              : 'You will be evaluating AI-generated world models. Each evaluation involves comparing two videos side-by-side and determining which one performs better across several quality dimensions.'
-            }
+            You will be evaluating AI-generated world models. Evaluations may involve either watching single videos and rating their quality, or comparing two videos side-by-side to determine which performs better across several quality dimensions.
           </p>
           
           <div className="bg-slate-800/50 border border-slate-600/50 p-4 rounded-lg">
             <h3 className="font-semibold mb-2 text-slate-200">What You&apos;ll Be Doing:</h3>
-            {experimentMode === 'single_video' ? (
-              <ol className="list-decimal list-inside space-y-2 text-slate-300">
-                <li>Watch a short video (approximately 4 seconds)</li>
-                <li>Rate it across four dimensions on a scale of 1-5:
-                  <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
-                    <li><strong className="text-slate-200">Overall Quality</strong> - General realism and believability</li>
-                    <li><strong className="text-slate-200">Controllability</strong> - How well the character follows commands</li>
-                    <li><strong className="text-slate-200">Visual Quality</strong> - Clarity and aesthetic appeal</li>
-                    <li><strong className="text-slate-200">Temporal Consistency</strong> - Smoothness and stability over time</li>
-                  </ul>
-                </li>
-                <li>Provide your rating for each dimension</li>
-              </ol>
-            ) : (
-              <ol className="list-decimal list-inside space-y-2 text-slate-300">
-                <li>Watch two short videos (approximately 4 seconds each) side by side</li>
-                <li>Compare them across four dimensions:
-                  <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
-                    <li><strong className="text-slate-200">Overall Quality</strong> - General realism and believability</li>
-                    <li><strong className="text-slate-200">Controllability</strong> - How well the character follows commands</li>
-                    <li><strong className="text-slate-200">Visual Quality</strong> - Clarity and aesthetic appeal</li>
-                    <li><strong className="text-slate-200">Temporal Consistency</strong> - Smoothness and stability over time</li>
-                  </ul>
-                </li>
-                <li>Select which video performs better for each dimension</li>
-              </ol>
-            )}
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium text-slate-200 mb-2">Single Video Evaluations:</h4>
+                <ol className="list-decimal list-inside space-y-1 text-slate-300 text-sm">
+                  <li>Watch a short video (approximately 4 seconds)</li>
+                  <li>Rate it across four dimensions on a scale of 1-5</li>
+                  <li>Provide your rating for each dimension</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-slate-200 mb-2">Comparison Evaluations:</h4>
+                <ol className="list-decimal list-inside space-y-1 text-slate-300 text-sm">
+                  <li>Watch two short videos side by side</li>
+                  <li>Compare them across four dimensions</li>
+                  <li>Select which video performs better for each dimension</li>
+                </ol>
+              </div>
+              <div>
+                <h4 className="font-medium text-slate-200 mb-2">Evaluation Dimensions:</h4>
+                <ul className="list-disc list-inside space-y-1 text-slate-300 text-sm">
+                  <li><strong className="text-slate-200">Overall Quality</strong> - General realism and believability</li>
+                  <li><strong className="text-slate-200">Controllability</strong> - How well the character follows commands</li>
+                  <li><strong className="text-slate-200">Visual Quality</strong> - Clarity and aesthetic appeal</li>
+                  <li><strong className="text-slate-200">Temporal Consistency</strong> - Smoothness and stability over time</li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           <div className="bg-slate-800/50 border border-slate-600/50 p-4 rounded-lg">
             <h3 className="font-semibold mb-2 text-slate-200">Important Notes:</h3>
             <ul className="list-disc list-inside space-y-2 text-slate-300">
-              <li>Each evaluation takes approximately {experimentMode === 'single_video' ? '1-2' : '2-3'} minutes</li>
-              <li>Please watch {experimentMode === 'single_video' ? 'each video' : 'both videos'} completely before making your judgments</li>
+              <li>Each evaluation takes approximately 1-3 minutes depending on the type</li>
+              <li>Please watch all videos completely before making your judgments</li>
               <li>There are no right or wrong answers - we want your honest opinion</li>
               <li>Use a modern browser (Chrome, Firefox, Safari) for best experience</li>
               {isProlific && (
@@ -161,58 +177,61 @@ export default function Home() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
             </div>
-          ) : (experimentMode === 'single_video' ? videoTasks.length === 0 : comparisons.length === 0) ? (
+          ) : (videoTasks.length === 0 && comparisons.length === 0) ? (
             <p className="text-center text-slate-400 py-8">
               No evaluations available at the moment.
             </p>
           ) : (
             <div className="space-y-2">
-              {experimentMode === 'single_video' 
-                ? videoTasks.map((videoTask) => (
-                    <Link
-                      key={videoTask.id}
-                      href={`/evaluate/${videoTask.id}`}
-                    >
-                      <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
-                        <CardContent className="flex items-center justify-between py-4">
-                          <div>
-                            <p className="font-medium text-slate-200">Model: {videoTask.model_name}</p>
-                            <p className="text-sm text-slate-400">Scenario: {videoTask.scenario_id}</p>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <Badge variant="secondary" className="bg-slate-700 text-slate-300 border-slate-600">
-                              Single Video
-                            </Badge>
-                            <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">Evaluate</Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))
-                : comparisons.map((comparison) => (
-                    <Link
-                      key={comparison.comparison_id}
-                      href={`/evaluate/${comparison.comparison_id}`}
-                    >
-                      <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
-                        <CardContent className="flex items-center justify-between py-4">
-                          <div>
-                            <p className="font-medium text-slate-200">Scenario: {comparison.scenario_id}</p>
-                            <p className="text-sm text-slate-400">
-                              Created: {new Date(comparison.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <Badge variant="secondary" className="bg-slate-700 text-slate-300 border-slate-600">
-                              {comparison.num_evaluations} evaluations
-                            </Badge>
-                            <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">Evaluate</Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))
-              }
+              {/* Show single video evaluations */}
+              {videoTasks.map((videoTask) => (
+                <Link
+                  key={videoTask.id}
+                  href={`/evaluate/${videoTask.id}`}
+                >
+                  <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
+                    <CardContent className="flex items-center justify-between py-4">
+                      <div>
+                        <p className="font-medium text-slate-200">{videoTask.experiment_name}</p>
+                        <p className="text-sm text-slate-400">
+                          Created: {new Date(videoTask.experiment_created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <Badge variant="secondary" className="bg-purple-700 text-purple-200 border-purple-600">
+                          Single Video
+                        </Badge>
+                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">Evaluate</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+              
+              {/* Show comparison evaluations */}
+              {comparisons.map((comparison) => (
+                <Link
+                  key={comparison.comparison_id}
+                  href={`/evaluate/${comparison.comparison_id}`}
+                >
+                  <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
+                    <CardContent className="flex items-center justify-between py-4">
+                      <div>
+                        <p className="font-medium text-slate-200">{comparison.experiment_name}</p>
+                        <p className="text-sm text-slate-400">
+                          Created: {new Date(comparison.experiment_created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <Badge variant="secondary" className="bg-blue-700 text-blue-200 border-blue-600">
+                          Comparison
+                        </Badge>
+                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">Evaluate</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
           )}
         </CardContent>

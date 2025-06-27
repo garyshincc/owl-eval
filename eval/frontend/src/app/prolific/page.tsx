@@ -55,8 +55,8 @@ export default function ProlificEntryPage() {
         sessionStorage.setItem('participant_id', data.participantId)
         sessionStorage.setItem('experiment_id', data.experimentId)
 
-        // Redirect to the main study page
-        router.push('/')
+        // Redirect to screening page first
+        router.push('/screening')
       } catch (error) {
         console.error('Error initializing Prolific session:', error)
         toast({

@@ -16,6 +16,12 @@ export async function GET(request: Request) {
       comparisons = await prisma.comparison.findMany({
         where: { experimentId },
         include: {
+          experiment: {
+            select: {
+              name: true,
+              createdAt: true
+            }
+          },
           _count: {
             select: { 
               evaluations: {
@@ -29,9 +35,9 @@ export async function GET(request: Request) {
         orderBy: { createdAt: 'desc' }
       })
     } else {
-      // Get all active experiments' comparisons for non-Prolific users
+      // Get all ready/active experiments' comparisons for non-Prolific users
       const activeExperiments = await prisma.experiment.findMany({
-        where: { status: 'active' },
+        where: { status: { in: ['ready', 'active'] } },
         select: { id: true }
       })
       
@@ -42,6 +48,12 @@ export async function GET(request: Request) {
           }
         },
         include: {
+          experiment: {
+            select: {
+              name: true,
+              createdAt: true
+            }
+          },
           _count: {
             select: { 
               evaluations: {
@@ -61,7 +73,9 @@ export async function GET(request: Request) {
       scenario_id: comparison.scenarioId,
       created_at: comparison.createdAt.toISOString(),
       num_evaluations: comparison._count.evaluations,
-      evaluation_url: `/evaluate/${comparison.id}`
+      evaluation_url: `/evaluate/${comparison.id}`,
+      experiment_name: comparison.experiment?.name,
+      experiment_created_at: comparison.experiment?.createdAt.toISOString()
     }))
     
     return NextResponse.json(comparisonList)
