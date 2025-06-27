@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import Papa from 'papaparse';
+import { shouldUpdateExperimentStatus, ExperimentStatus } from '../utils/status';
 
 const PROLIFIC_API_URL = 'https://api.prolific.com';
 const PROLIFIC_API_TOKEN = process.env.PROLIFIC_API_TOKEN;
@@ -504,8 +505,13 @@ export class ProlificService {
       }
     }
 
-    // Auto-update experiment status based on Prolific study status
-    let experimentStatus = experiment.status;
+    // Auto-update experiment status based on Prolific study status using smart status management
+    const statusUpdate = shouldUpdateExperimentStatus(
+      experiment.status,
+      study.status,
+      !!experiment.startedAt
+    );
+
     let statusData: any = {
       config: {
         ...experiment.config as object,
@@ -513,49 +519,30 @@ export class ProlificService {
       }
     };
 
-    switch (study.status) {
-      case 'UNPUBLISHED':
-      case 'DRAFT':
-        // If Prolific study is unpublished/draft, experiment should be draft
-        experimentStatus = 'draft';
-        break;
-      case 'ACTIVE':
-      case 'RUNNING':
-        experimentStatus = 'active';
-        if (!experiment.startedAt) {
-          statusData.startedAt = new Date();
-        }
-        break;
-      case 'PAUSED':
-        experimentStatus = 'paused';
-        break;
-      case 'COMPLETED':
-        experimentStatus = 'completed';
+    if (statusUpdate.shouldUpdate) {
+      statusData.status = statusUpdate.newStatus;
+      
+      // Set timestamps based on new status
+      if (statusUpdate.newStatus === ExperimentStatus.ACTIVE && !experiment.startedAt) {
+        statusData.startedAt = new Date();
+      } else if (statusUpdate.newStatus === ExperimentStatus.COMPLETED && !experiment.completedAt) {
         statusData.completedAt = new Date();
-        break;
-      case 'STOPPED':
-        experimentStatus = 'paused';
-        break;
-      default:
-        // Keep current status for unknown Prolific statuses
-        console.log(`Unknown Prolific status: ${study.status}, keeping experiment status as ${experiment.status}`);
-        break;
-    }
+      }
 
-    if (experimentStatus !== experiment.status) {
-      statusData.status = experimentStatus;
       await prisma.experiment.update({
         where: { id: experiment.id },
         data: statusData
       });
-      console.log(`✓ Updated experiment status from '${experiment.status}' to '${experimentStatus}' (Prolific: ${study.status})`);
+      
+      console.log(`✓ ${statusUpdate.reason}`);
     } else {
       // Still update config to track Prolific status even if experiment status doesn't change
       await prisma.experiment.update({
         where: { id: experiment.id },
         data: statusData
       });
-      console.log(`✓ Synced Prolific status '${study.status}' (experiment status unchanged)`);
+      
+      console.log(`✓ ${statusUpdate.reason}`);
     }
 
     return {

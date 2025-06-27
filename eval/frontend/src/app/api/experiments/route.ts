@@ -135,11 +135,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Generate unique slug
+    let experimentSlug = slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-')
+    
+    // Check if slug already exists and make it unique if needed
+    let slugExists = await prisma.experiment.findUnique({
+      where: { slug: experimentSlug },
+      select: { id: true }
+    })
+    
+    let counter = 1
+    const baseSlug = experimentSlug
+    
+    while (slugExists) {
+      experimentSlug = `${baseSlug}-${counter}`
+      slugExists = await prisma.experiment.findUnique({
+        where: { slug: experimentSlug },
+        select: { id: true }
+      })
+      counter++
+    }
+
     // Create experiment with either comparisons or video tasks based on evaluation mode
     const experimentData: any = {
       name,
       description: description || null,
-      slug: slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+      slug: experimentSlug,
       group: group || null,
       status: 'draft',
       evaluationMode: evaluationMode,

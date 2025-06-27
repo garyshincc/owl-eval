@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isVisibleToPublic } from '@/lib/utils/status'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,19 +36,23 @@ export async function GET(request: Request) {
         orderBy: { createdAt: 'desc' }
       })
     } else {
-      // Get all ready/active experiments' video tasks for non-Prolific users
-      const activeExperiments = await prisma.experiment.findMany({
+      // Get all public-visible experiments' video tasks for non-Prolific users
+      const publicExperiments = await prisma.experiment.findMany({
         where: { 
-          status: { in: ['ready', 'active'] },
           evaluationMode: 'single_video'
         },
-        select: { id: true }
+        select: { id: true, status: true }
       })
+      
+      // Filter experiments that are visible to public
+      const visibleExperimentIds = publicExperiments
+        .filter(exp => isVisibleToPublic(exp.status))
+        .map(exp => exp.id)
       
       videoTasks = await prisma.videoTask.findMany({
         where: {
           experimentId: {
-            in: activeExperiments.map(e => e.id)
+            in: visibleExperimentIds
           }
         },
         include: {

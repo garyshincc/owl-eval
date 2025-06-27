@@ -13,6 +13,8 @@ interface Comparison {
   created_at: string
   num_evaluations: number
   evaluation_url: string
+  experiment_name: string
+  experiment_created_at: string
 }
 
 interface VideoTask {
@@ -21,6 +23,8 @@ interface VideoTask {
   model_name: string
   created_at: string
   evaluation_url: string
+  experiment_name: string
+  experiment_created_at: string
 }
 
 export default function Home() {

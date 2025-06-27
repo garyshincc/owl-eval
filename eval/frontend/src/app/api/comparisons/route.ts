@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isVisibleToPublic } from '@/lib/utils/status'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,16 +36,20 @@ export async function GET(request: Request) {
         orderBy: { createdAt: 'desc' }
       })
     } else {
-      // Get all ready/active experiments' comparisons for non-Prolific users
-      const activeExperiments = await prisma.experiment.findMany({
-        where: { status: { in: ['ready', 'active'] } },
-        select: { id: true }
+      // Get all public-visible experiments' comparisons for non-Prolific users
+      const publicExperiments = await prisma.experiment.findMany({
+        select: { id: true, status: true }
       })
+      
+      // Filter experiments that are visible to public
+      const visibleExperimentIds = publicExperiments
+        .filter(exp => isVisibleToPublic(exp.status))
+        .map(exp => exp.id)
       
       comparisons = await prisma.comparison.findMany({
         where: {
           experimentId: {
-            in: activeExperiments.map(e => e.id)
+            in: visibleExperimentIds
           }
         },
         include: {

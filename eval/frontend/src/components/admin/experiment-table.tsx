@@ -41,6 +41,7 @@ import {
   Upload,
   StopCircle
 } from 'lucide-react'
+import { getStatusColor, ExperimentStatus } from '@/lib/utils/status'
 
 interface Experiment {
   id: string
@@ -101,17 +102,6 @@ export function ExperimentTable({
 
   const uniqueGroups = Array.from(new Set(experiments.map(exp => exp.group).filter(Boolean)))
 
-  const getStatusColor = (status: string, archived: boolean) => {
-    if (archived) return 'bg-destructive/10 text-destructive border-destructive/20'
-    switch (status) {
-      case 'ready': return 'bg-green-500/10 text-green-600 border-green-500/20'
-      case 'active': return 'bg-secondary/10 text-secondary border-secondary/20'
-      case 'completed': return 'bg-primary/10 text-primary border-primary/20'
-      case 'paused': return 'bg-accent/10 text-accent border-accent/20'
-      case 'draft': return 'bg-muted text-muted-foreground border-border'
-      default: return 'bg-destructive/10 text-destructive border-destructive/20'
-    }
-  }
 
   const getProgressPercentage = (exp: Experiment) => {
     if (exp.evaluationMode === 'single_video') {
@@ -527,19 +517,19 @@ export function ExperimentTable({
               <DropdownMenuItem onClick={() => setStatusFilter('all')}>
                 All Status
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('ready')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.READY)}>
                 Ready
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('active')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.ACTIVE)}>
                 Active
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('draft')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.DRAFT)}>
                 Draft
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('completed')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.COMPLETED)}>
                 Completed
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('paused')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.PAUSED)}>
                 Paused
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setStatusFilter('archived')}>
@@ -750,10 +740,10 @@ export function ExperimentTable({
                           )}
                           
                           {/* DRAFT Status: Ready or Ready+Publish options */}
-                          {exp.status === 'draft' && !exp.archived && (
+                          {exp.status === ExperimentStatus.DRAFT && !exp.archived && (
                             <>
                               <DropdownMenuItem
-                                onClick={() => handleUpdateStatus(exp.id, 'ready')}
+                                onClick={() => handleUpdateStatus(exp.id, ExperimentStatus.READY)}
                                 disabled={actionLoading === exp.id}
                               >
                                 <Play className="h-4 w-4 mr-2" />
@@ -769,7 +759,7 @@ export function ExperimentTable({
                                       headers: {
                                         'Content-Type': 'application/json',
                                       },
-                                      body: JSON.stringify({ status: 'ready' }),
+                                      body: JSON.stringify({ status: ExperimentStatus.READY }),
                                     })
 
                                     if (!response.ok) {
@@ -805,7 +795,7 @@ export function ExperimentTable({
                           )}
 
                           {/* READY/UNPUBLISHED: Show Publish button */}
-                          {exp.status === 'ready' && !exp.prolificStudyId && !exp.archived && (
+                          {exp.status === ExperimentStatus.READY && !exp.prolificStudyId && !exp.archived && (
                             <DropdownMenuItem
                               onClick={() => onCreateProlificStudy?.(exp.id)}
                               disabled={!onCreateProlificStudy}
@@ -816,7 +806,7 @@ export function ExperimentTable({
                           )}
 
                           {/* READY/PUBLISHED: Show Launch button */}
-                          {exp.status === 'ready' && exp.prolificStudyId && (exp.config?.prolificStatus === 'UNPUBLISHED' || exp.config?.prolificStatus === 'DRAFT') && !exp.archived && (
+                          {exp.status === ExperimentStatus.READY && exp.prolificStudyId && (exp.config?.prolificStatus === 'UNPUBLISHED' || exp.config?.prolificStatus === 'DRAFT') && !exp.archived && (
                             <DropdownMenuItem
                               onClick={() => handleProlificAction(exp, 'publish')}
                               disabled={actionLoading === exp.id}
