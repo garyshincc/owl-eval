@@ -58,7 +58,8 @@ model TwoVideoComparisonTask {
 
 model Participant {
   id                 String   @id @default(cuid())
-  prolificId         String   @unique
+  prolificId         String?  @unique
+  prolificSubmissionId String? @unique
   experimentId       String
   sessionId          String   @unique @default(cuid())
   status             String   @default("active") // active, completed, rejected, screening_failed
@@ -75,6 +76,10 @@ model Participant {
   screeningAttempts  Int      @default(0) // Number of screening attempts
   screeningData      Json?    // Store answers and validation results
   screeningCompletedAt DateTime? // When they completed (passed or failed) screening
+  
+  // Rejection fields for Prolific integration
+  rejectionReason      String?   // Reason for rejection
+  rejectedAt           DateTime? // When they were rejected
   
   experiment                       Experiment @relation(fields: [experimentId], references: [id])
   twoVideoComparisonSubmissions    TwoVideoComparisonSubmission[]

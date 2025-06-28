@@ -7,32 +7,24 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Loader2 } from 'lucide-react'
 
-interface Comparison {
-  comparison_id: string
-  scenario_id: string
-  created_at: string
-  num_evaluations: number
-  evaluation_url: string
-  experiment_name: string
-  experiment_created_at: string
-}
-
-interface VideoTask {
+interface Experiment {
   id: string
-  scenario_id: string
-  model_name: string
-  created_at: string
-  evaluation_url: string
-  experiment_name: string
-  experiment_created_at: string
+  name: string
+  description: string | null
+  evaluationMode: 'comparison' | 'single_video'
+  status: string
+  archived: boolean
+  createdAt: string
+  _count: {
+    twoVideoComparisonTasks: number
+    singleVideoEvaluationTasks: number
+  }
 }
 
 export default function Home() {
-  const [comparisons, setComparisons] = useState<Comparison[]>([])
-  const [videoTasks, setVideoTasks] = useState<VideoTask[]>([])
+  const [experiments, setExperiments] = useState<Experiment[]>([])
   const [loading, setLoading] = useState(true)
   const [isProlific, setIsProlific] = useState(false)
-  const [experimentMode, setExperimentMode] = useState<'comparison' | 'single_video'>('comparison')
 
   useEffect(() => {
     // Check if this is a Prolific session
@@ -41,73 +33,63 @@ export default function Home() {
       setIsProlific(true)
     }
     
-    fetchTasks()
+    fetchExperiments()
   }, [])
 
-  const fetchTasks = async () => {
+  const fetchExperiments = async () => {
     try {
-      // Include experiment ID if this is a Prolific session
       const experimentId = sessionStorage.getItem('experiment_id')
       
       if (experimentId) {
-        // For Prolific sessions, first determine the experiment mode
-        const expResponse = await fetch(`/api/experiments`)
-        if (!expResponse.ok) {
-          console.error('Failed to fetch experiments:', expResponse.status)
-          // Show error message instead of crashing
+        // For Prolific sessions, only show the specific experiment
+        const response = await fetch(`/api/experiments`)
+        if (!response.ok) {
           throw new Error('Failed to load experiment data')
         }
-        const experiments = await expResponse.json()
-        const experiment = experiments.find((exp: any) => exp.id === experimentId)
+        const allExperiments = await response.json()
+        const experiment = allExperiments.find((exp: any) => exp.id === experimentId)
         
         if (!experiment) {
-          console.error('Experiment not found:', experimentId)
           throw new Error('Experiment not found or no longer active')
         }
         
-        if (experiment && experiment.evaluationMode === 'single_video') {
-          setExperimentMode('single_video')
-          // Fetch video tasks for single video experiments
-          const response = await fetch(`/api/single-video-evaluation-tasks?experimentId=${experimentId}`)
-          const data = await response.json()
-          setVideoTasks(data)
-        } else {
-          setExperimentMode('comparison')
-          // Fetch comparisons for comparison experiments
-          const response = await fetch(`/api/two-video-comparison-tasks?experimentId=${experimentId}`)
-          const data = await response.json()
-          setComparisons(data)
-        }
+        setExperiments([experiment])
       } else {
-        // For non-Prolific sessions, fetch both comparisons and video tasks
-        console.log('Fetching all available experiments for non-Prolific user')
-        
-        const [comparisonsResponse, videoTasksResponse] = await Promise.all([
-          fetch('/api/two-video-comparison-tasks'),
-          fetch('/api/single-video-evaluation-tasks')
-        ])
-        
-        const comparisonsData = await comparisonsResponse.json()
-        const videoTasksData = await videoTasksResponse.json()
-        
-        console.log('Comparisons found:', comparisonsData.length, comparisonsData)
-        console.log('Video tasks found:', videoTasksData.length, videoTasksData)
-        
-        setComparisons(comparisonsData)
-        setVideoTasks(videoTasksData)
-        
-        // Set experiment mode based on what's available
-        if (videoTasksData.length > 0) {
-          setExperimentMode('single_video')
-        } else if (comparisonsData.length > 0) {
-          setExperimentMode('comparison')
+        // For non-Prolific sessions, show all active experiments
+        const response = await fetch('/api/experiments')
+        if (!response.ok) {
+          throw new Error('Failed to load experiments')
         }
+        const allExperiments = await response.json()
+        
+        // Filter to only show experiments that are ready/active and have tasks
+        const availableExperiments = allExperiments.filter((exp: Experiment) => 
+          (exp.status === 'active' || exp.status === 'ready') && 
+          !exp.archived &&
+          (exp._count.twoVideoComparisonTasks > 0 || exp._count.singleVideoEvaluationTasks > 0)
+        )
+        
+        setExperiments(availableExperiments)
       }
     } catch (error) {
-      console.error('Error fetching tasks:', error)
+      console.error('Error fetching experiments:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const getExperimentStartUrl = (experiment: Experiment) => {
+    // For experiments, we need to get the first task
+    // We'll use the experiment's evaluation mode to determine which API to call
+    if (experiment.evaluationMode === 'single_video') {
+      return `/screening/single-video` // Start with screening for single video experiments
+    } else {
+      return `/screening/comparison` // Start with screening for comparison experiments
+    }
+  }
+
+  const getTotalTasks = (experiment: Experiment) => {
+    return experiment._count.twoVideoComparisonTasks + experiment._count.singleVideoEvaluationTasks
   }
 
   return (
@@ -174,63 +156,56 @@ export default function Home() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100">Available Evaluations</CardTitle>
+          <CardTitle className="text-slate-100">Available Experiments</CardTitle>
+          <CardDescription className="text-slate-300">
+            Choose an experiment to participate in
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
             </div>
-          ) : (videoTasks.length === 0 && comparisons.length === 0) ? (
+          ) : experiments.length === 0 ? (
             <p className="text-center text-slate-400 py-8">
-              No evaluations available at the moment.
+              No experiments available at the moment.
             </p>
           ) : (
             <div className="space-y-2">
-              {/* Show single video evaluations */}
-              {videoTasks.map((videoTask) => (
+              {experiments.map((experiment) => (
                 <Link
-                  key={videoTask.id}
-                  href={`/evaluate/${videoTask.id}`}
+                  key={experiment.id}
+                  href={getExperimentStartUrl(experiment)}
                 >
                   <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
                     <CardContent className="flex items-center justify-between py-4">
-                      <div>
-                        <p className="font-medium text-slate-200">{videoTask.experiment_name}</p>
-                        <p className="text-sm text-slate-400">
-                          Created: {new Date(videoTask.experiment_created_at).toLocaleDateString()}
+                      <div className="flex-1">
+                        <p className="font-medium text-slate-200">{experiment.name}</p>
+                        <p className="text-sm text-slate-400 mb-2">
+                          Created: {new Date(experiment.createdAt).toLocaleDateString()}
                         </p>
+                        {experiment.description && (
+                          <p className="text-sm text-slate-300 max-w-2xl">
+                            {experiment.description}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-4">
-                        <Badge variant="secondary" className="bg-purple-700 text-purple-200 border-purple-600">
-                          Single Video
-                        </Badge>
-                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">Evaluate</Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-              
-              {/* Show comparison evaluations */}
-              {comparisons.map((comparison) => (
-                <Link
-                  key={comparison.comparison_id}
-                  href={`/evaluate/${comparison.comparison_id}`}
-                >
-                  <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
-                    <CardContent className="flex items-center justify-between py-4">
-                      <div>
-                        <p className="font-medium text-slate-200">{comparison.experiment_name}</p>
-                        <p className="text-sm text-slate-400">
-                          Created: {new Date(comparison.experiment_created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <Badge variant="secondary" className="bg-blue-700 text-blue-200 border-blue-600">
-                          Comparison
-                        </Badge>
-                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">Evaluate</Button>
+                        <div className="text-right">
+                          <Badge variant="secondary" className={
+                            experiment.evaluationMode === 'single_video' 
+                              ? "bg-purple-700 text-purple-200 border-purple-600"
+                              : "bg-blue-700 text-blue-200 border-blue-600"
+                          }>
+                            {experiment.evaluationMode === 'single_video' ? 'Single Video' : 'Comparison'}
+                          </Badge>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {getTotalTasks(experiment)} tasks
+                          </p>
+                        </div>
+                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">
+                          Begin Study
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>

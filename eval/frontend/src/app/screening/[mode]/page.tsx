@@ -96,17 +96,59 @@ export default function ScreeningModePage() {
       const result = await response.json()
       setIsComplete(true)
       
-      // If they passed, mark screening as completed and continue
+      // Handle post-screening logic
       if (validation.passed) {
         sessionStorage.setItem('screening_completed', 'true')
-        setTimeout(() => {
-          const isProlific = sessionStorage.getItem('is_prolific')
-          if (isProlific) {
-            router.push('/prolific')
+        
+        // Get the next available task for this participant
+        const experimentId = sessionStorage.getItem('experiment_id')
+        const nextTaskResponse = await fetch(`/api/next-task?participantId=${participantId}&experimentId=${experimentId || ''}`)
+        
+        if (nextTaskResponse.ok) {
+          const nextTaskData = await nextTaskResponse.json()
+          
+          if (nextTaskData.taskId) {
+            // Redirect directly to the evaluation
+            setTimeout(() => {
+              router.push(`/evaluate/${nextTaskData.taskId}`)
+            }, 2000)
           } else {
-            router.push('/')
+            // No tasks available - redirect to thank you page
+            setTimeout(() => {
+              router.push('/thank-you')
+            }, 2000)
           }
-        }, 3000)
+        } else {
+          // Fallback to home page if API fails
+          setTimeout(() => {
+            router.push('/')
+          }, 2000)
+        }
+      } else {
+        // Handle screening failure
+        const isProlific = sessionStorage.getItem('is_prolific')
+        const isAnon = participantId?.includes('anon') || participantId?.includes('screening-')
+        
+        if (isProlific && !isAnon) {
+          // Reject Prolific participant
+          const rejectResponse = await fetch('/api/prolific/reject', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              participantId,
+              reason: 'Failed screening requirements - did not meet minimum task threshold'
+            })
+          })
+          
+          if (!rejectResponse.ok) {
+            console.error('Failed to reject Prolific participant')
+          }
+        }
+        
+        // For both anon and Prolific (after rejection), we'll show the failure message
+        // The UI will handle showing appropriate buttons
       }
       
     } catch (error) {
@@ -158,7 +200,7 @@ export default function ScreeningModePage() {
                   You will now be redirected to begin the main evaluation.
                 </p>
                 <p className="text-green-200 text-sm">
-                  Redirecting in a few seconds...
+                  Redirecting to the study in a few seconds...
                 </p>
               </div>
             ) : (
@@ -168,9 +210,37 @@ export default function ScreeningModePage() {
                   You passed {validationResult.passedTasks.length} out of {config.tasks.tasks.length} screening tasks, 
                   but {config.passThreshold} were required to qualify for this study.
                 </p>
-                <p className="text-red-200 text-sm">
-                  Thank you for your time. Your participation will be recorded as incomplete.
-                </p>
+                {(() => {
+                  const isProlific = sessionStorage.getItem('is_prolific')
+                  const isAnon = participantId?.includes('anon') || participantId?.includes('screening-')
+                  
+                  if (isProlific && !isAnon) {
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-red-200 text-sm">
+                          Your Prolific submission has been marked as rejected. You will not be able to participate in this study.
+                        </p>
+                        <p className="text-red-200 text-sm">
+                          Thank you for your time.
+                        </p>
+                      </div>
+                    )
+                  } else {
+                    return (
+                      <div className="space-y-4">
+                        <p className="text-red-200 text-sm">
+                          Thank you for your time. You may try other available studies.
+                        </p>
+                        <Button 
+                          onClick={() => router.push('/')}
+                          className="bg-slate-600 hover:bg-slate-700 text-white"
+                        >
+                          Return to Home
+                        </Button>
+                      </div>
+                    )
+                  }
+                })()}
               </div>
             )}
             

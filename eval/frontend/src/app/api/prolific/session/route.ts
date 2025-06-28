@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
         where: { id: participant.id },
         data: {
           sessionId: sessionId,
+          prolificSubmissionId: sessionId, // sessionId from Prolific is actually the submission ID
           status: 'active',
           metadata: {
             ...participant.metadata as object || {},
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
       participant = await prisma.participant.create({
         data: {
           prolificId: prolificPid,
+          prolificSubmissionId: sessionId, // sessionId from Prolific is actually the submission ID
           experimentId: experiment.id,
           sessionId: sessionId,
           status: 'active',

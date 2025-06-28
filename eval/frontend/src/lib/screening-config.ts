@@ -52,7 +52,7 @@ export const SCREENING_CONFIG: ScreeningConfig = {
     tasks: [
       {
         id: "terrible-example",
-        videoPath: "screening/terrible-minecraft.mp4", // Path in Tigris storage
+        videoPath: "initial-screen-video-library/very-bad.mp4", // Path in Tigris storage
         title: "Example 1: Poor Quality Video",
         instructions: "Watch this video and rate its overall quality on a scale of 1-5.",
         explanation: "This video has obvious quality issues including: flickering, unrealistic movements, poor textures, and inconsistent physics. It should be rated as poor quality.",
@@ -61,11 +61,11 @@ export const SCREENING_CONFIG: ScreeningConfig = {
       },
       {
         id: "mediocre-example",
-        videoPath: "screening/mediocre-minecraft.mp4", // Path in Tigris storage
+        videoPath: "initial-screen-video-library/good.mp4", // Path in Tigris storage
         title: "Example 2: Average Quality Video", 
         instructions: "Watch this video and rate its overall quality on a scale of 1-5.",
         explanation: "This video shows typical AI-generated content - not terrible but has some issues like minor inconsistencies and artifacts. It represents average quality.",
-        expectedRating: [3], // Must rate exactly 3 to pass
+        expectedRating: [2, 3, 4], // Must rate exactly 3 to pass
         failureMessage: "This video represents average quality with some issues but is not extremely poor or excellent. Please review the evaluation criteria and try again."
       }
     ]
@@ -77,8 +77,8 @@ export const SCREENING_CONFIG: ScreeningConfig = {
     tasks: [
       {
         id: "obvious-difference",
-        videoAPath: "screening/good-minecraft.mp4", // Path in Tigris storage
-        videoBPath: "screening/bad-minecraft.mp4", // Path in Tigris storage
+        videoAPath: "initial-screen-video-library/good.mp4", // Path in Tigris storage
+        videoBPath: "initial-screen-video-library/very-bad.mp4", // Path in Tigris storage
         title: "Comparison 1: Clear Quality Difference",
         instructions: "Compare these two videos and select which has better overall quality.",
         explanation: "Video A shows good quality with smooth movements and realistic physics, while Video B has obvious problems like glitching and poor rendering.",
@@ -87,8 +87,8 @@ export const SCREENING_CONFIG: ScreeningConfig = {
       },
       {
         id: "close-comparison", 
-        videoAPath: "screening/decent-1-minecraft.mp4", // Path in Tigris storage
-        videoBPath: "screening/decent-2-minecraft.mp4", // Path in Tigris storage
+        videoAPath: "initial-screen-video-library/bad.mp4", // Path in Tigris storage
+        videoBPath: "initial-screen-video-library/okay.mp4", // Path in Tigris storage
         title: "Comparison 2: Similar Quality Videos",
         instructions: "Compare these two videos and select which has better overall quality, or if they are roughly equal.",
         explanation: "Both videos show decent quality with minor differences. Either choice is acceptable as they represent similar quality levels.",
