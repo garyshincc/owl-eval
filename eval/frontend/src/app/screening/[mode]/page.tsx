@@ -41,10 +41,17 @@ export default function ScreeningModePage() {
       return
     }
     
-    // For non-Prolific users, generate a session ID if needed
+    // For non-Prolific users, generate a consistent participant ID
     let actualParticipantId = sessionId
     if (!actualParticipantId) {
-      actualParticipantId = `screening-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+      // Check if we already have an anonymous session ID from evaluation page
+      actualParticipantId = sessionStorage.getItem('anon_session_id')
+      if (!actualParticipantId) {
+        // Generate new unified participant ID for anonymous users
+        actualParticipantId = `anon-session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+        sessionStorage.setItem('anon_session_id', actualParticipantId)
+      }
+      // Also store in session_id for backwards compatibility
       sessionStorage.setItem('session_id', actualParticipantId)
     }
     
@@ -94,7 +101,6 @@ export default function ScreeningModePage() {
       }
       
       const result = await response.json()
-      setIsComplete(true)
       
       // Handle post-screening logic
       if (validation.passed) {
@@ -108,26 +114,26 @@ export default function ScreeningModePage() {
           const nextTaskData = await nextTaskResponse.json()
           
           if (nextTaskData.taskId) {
-            // Redirect directly to the evaluation
-            setTimeout(() => {
-              router.push(`/evaluate/${nextTaskData.taskId}`)
-            }, 2000)
+            // Redirect directly to the evaluation (no results page for passes)
+            router.push(`/evaluate/${nextTaskData.taskId}`)
+            return // Exit early, don't set isComplete
           } else {
             // No tasks available - redirect to thank you page
-            setTimeout(() => {
-              router.push('/thank-you')
-            }, 2000)
+            router.push('/thank-you')
+            return // Exit early, don't set isComplete
           }
         } else {
           // Fallback to home page if API fails
-          setTimeout(() => {
-            router.push('/')
-          }, 2000)
+          router.push('/')
+          return // Exit early, don't set isComplete
         }
       } else {
-        // Handle screening failure
+        // Handle screening failure - only show results page for failures
+        setIsComplete(true)
+        setValidationResult(validation)
+        
         const isProlific = sessionStorage.getItem('is_prolific')
-        const isAnon = participantId?.includes('anon') || participantId?.includes('screening-')
+        const isAnon = participantId?.includes('anon-')
         
         if (isProlific && !isAnon) {
           // Reject Prolific participant
@@ -146,9 +152,6 @@ export default function ScreeningModePage() {
             console.error('Failed to reject Prolific participant')
           }
         }
-        
-        // For both anon and Prolific (after rejection), we'll show the failure message
-        // The UI will handle showing appropriate buttons
       }
       
     } catch (error) {
@@ -212,7 +215,7 @@ export default function ScreeningModePage() {
                 </p>
                 {(() => {
                   const isProlific = sessionStorage.getItem('is_prolific')
-                  const isAnon = participantId?.includes('anon') || participantId?.includes('screening-')
+                  const isAnon = participantId?.includes('anon-')
                   
                   if (isProlific && !isAnon) {
                     return (

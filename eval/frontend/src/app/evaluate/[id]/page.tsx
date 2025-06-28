@@ -127,7 +127,7 @@ export default function EvaluatePage() {
   const [saving, setSaving] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Generate or retrieve session ID for anonymous users
+  // Generate or retrieve session ID for anonymous users  
   const getSessionId = useCallback(() => {
     let sessionId = sessionStorage.getItem('anon_session_id')
     if (!sessionId) {
@@ -264,7 +264,7 @@ export default function EvaluatePage() {
       // Load any existing draft
       const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
       const sessionId = getSessionId()
-      const draftResponse = await fetch(`/api/two-video-comparison-submissions/draft?comparisonId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
+      const draftResponse = await fetch(`/api/two-video-comparison-submissions/draft?twoVideoComparisonTaskId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
 
       if (draftResponse.ok) {
         const draftData = await draftResponse.json()

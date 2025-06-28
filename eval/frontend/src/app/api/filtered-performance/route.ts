@@ -458,7 +458,7 @@ export async function POST(request: NextRequest) {
             scenario: undefined,
             win_rate: qualityRate, // For single video, "win rate" = proportion of high scores
             quality_score: averageScore, // Average 1-5 rating
-            num_twoVideoComparisonSubmissions: stats.count,
+            num_singleVideoEvaluationSubmissions: stats.count,
             experimentId: stats.experimentId,
             evaluationType: 'single_video',
             score_distribution: {

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const participant = await prisma.participant.findUnique({
       where: { sessionId: participantId },
       include: { experiment: true }
-    })
+    }) as any // Cast to any to handle schema changes not yet migrated
 
     if (!participant) {
       return NextResponse.json(
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       data: {
         status: 'completed',
         completedAt: new Date()
-      }
+      } as any // Cast to any to handle schema changes not yet migrated
     })
 
     // Make API call to Prolific to approve the submission

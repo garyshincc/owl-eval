@@ -29,7 +29,9 @@ interface ModelPerformance {
   dimension: string
   scenario?: string
   win_rate: number
-  num_evaluations: number
+  num_evaluations?: number // Legacy field name
+  num_twoVideoComparisonSubmissions?: number // New field name for comparison tasks
+  num_singleVideoEvaluationSubmissions?: number // New field name for single video tasks
   experimentId: string
   evaluationType: 'comparison' | 'single_video'
   quality_score?: number // For single video evaluations (1-5 scale)
@@ -112,15 +114,16 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
   const modelData = filteredPerformance.reduce((acc, item) => {
     const model = acc.find(m => m.model === item.model)
     const displayValue = getDisplayValue(item)
+    const evaluationCount = item.num_twoVideoComparisonSubmissions || item.num_singleVideoEvaluationSubmissions || item.num_evaluations || 0
     
     if (model) {
       model[item.dimension] = displayValue
-      model.total_evaluations += item.num_evaluations
+      model.total_evaluations += evaluationCount
     } else {
       acc.push({
         model: item.model,
         [item.dimension]: displayValue,
-        total_evaluations: item.num_evaluations,
+        total_evaluations: evaluationCount,
         evaluationType: item.evaluationType
       })
     }
@@ -145,7 +148,7 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
     dimension: item.dimension,
     win_rate: getDisplayValue(item),
     quality_score: item.quality_score,
-    evaluations: item.num_evaluations,
+    evaluations: item.num_twoVideoComparisonSubmissions || item.num_singleVideoEvaluationSubmissions || item.num_evaluations || 0,
     evaluationType: item.evaluationType
   }))
 
@@ -158,20 +161,23 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
   ]
 
   // Calculate overall stats
-  const totalEvaluations = filteredPerformance.reduce((sum, p) => sum + p.num_evaluations, 0)
-  const bestPerformingModel = modelData.reduce((best, current) => {
-    const currentAvg = Object.keys(current)
-      .filter(key => key !== 'model' && key !== 'total_evaluations')
-      .reduce((sum, key) => sum + (current[key] || 0), 0) / 
-      Object.keys(current).filter(key => key !== 'model' && key !== 'total_evaluations').length
+  const totalEvaluations = filteredPerformance.reduce((sum, p) => {
+    // Handle different field names based on evaluation type
+    const count = p.num_twoVideoComparisonSubmissions || p.num_singleVideoEvaluationSubmissions || p.num_evaluations || 0
+    return sum + count
+  }, 0)
+  const bestPerformingModel = modelData.length > 0 ? modelData.reduce((best, current) => {
+    const currentKeys = Object.keys(current).filter(key => key !== 'model' && key !== 'total_evaluations')
+    const bestKeys = Object.keys(best).filter(key => key !== 'model' && key !== 'total_evaluations')
     
-    const bestAvg = Object.keys(best)
-      .filter(key => key !== 'model' && key !== 'total_evaluations')
-      .reduce((sum, key) => sum + (best[key] || 0), 0) / 
-      Object.keys(best).filter(key => key !== 'model' && key !== 'total_evaluations').length
+    if (currentKeys.length === 0) return best
+    if (bestKeys.length === 0) return current
+    
+    const currentAvg = currentKeys.reduce((sum, key) => sum + (current[key] || 0), 0) / currentKeys.length
+    const bestAvg = bestKeys.reduce((sum, key) => sum + (best[key] || 0), 0) / bestKeys.length
     
     return currentAvg > bestAvg ? current : best
-  }, modelData[0])
+  }, modelData[0]) : null
 
   return (
     <div className="space-y-6">
@@ -195,7 +201,7 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-primary">Total Evaluations</p>
-                <p className="text-2xl font-bold text-foreground">{totalEvaluations}</p>
+                <p className="text-2xl font-bold text-foreground">{totalEvaluations || 0}</p>
               </div>
               <Target className="h-8 w-8 text-primary" />
             </div>

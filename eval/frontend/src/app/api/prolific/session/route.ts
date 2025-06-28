@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
             lastAccessed: new Date().toISOString(),
             studyId: studyId
           }
-        }
+        } as any // Cast to any to handle schema changes not yet migrated
       })
     } else {
       // Create new participant for this experiment
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
             studyId: studyId,
             firstAccessed: new Date().toISOString()
           }
-        }
+        } as any // Cast to any to handle schema changes not yet migrated
       })
     }
 
