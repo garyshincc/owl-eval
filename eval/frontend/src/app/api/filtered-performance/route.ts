@@ -136,8 +136,8 @@ export async function POST(request: NextRequest) {
       }
 
       if (selectedExperiment) {
-        // If specific experiment selected, filter by experiment through comparison
-        evaluationWhere.comparison = {
+        // If specific experiment selected, filter by experiment through twoVideoComparisonTask
+        evaluationWhere.twoVideoComparisonTask = {
           experimentId: selectedExperiment
         }
       } else {
@@ -338,8 +338,8 @@ export async function POST(request: NextRequest) {
       }
 
       if (selectedExperiment) {
-        // If specific experiment selected, filter by experiment through videoTask
-        singleVideoWhere.videoTask = {
+        // If specific experiment selected, filter by experiment through singleVideoEvaluationTask
+        singleVideoWhere.singleVideoEvaluationTask = {
           experimentId: selectedExperiment
         }
         // Don't pre-filter by participant when using selectedExperiment - we'll filter manually later
@@ -348,10 +348,10 @@ export async function POST(request: NextRequest) {
         singleVideoWhere.participantId = { in: finalFilteredParticipants.map(p => p.id) }
       }
 
-      const singleVideoEvaluations = await (prisma as any).singleVideoEvaluation.findMany({
+      const singleVideoEvaluations = await prisma.singleVideoEvaluationSubmission.findMany({
         where: singleVideoWhere,
         include: {
-          videoTask: {
+          singleVideoEvaluationTask: {
             select: {
               modelName: true,
               scenarioId: true
@@ -413,7 +413,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const modelName = evaluation.videoTask.modelName
+        const modelName = evaluation.singleVideoEvaluationTask.modelName
         const dimensionScores = evaluation.dimensionScores as any
 
         if (!dimensionScores || typeof dimensionScores !== 'object') continue

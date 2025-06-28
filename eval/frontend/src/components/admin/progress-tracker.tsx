@@ -13,8 +13,12 @@ import {
 } from 'lucide-react'
 
 interface EvaluationStats {
-  total_comparisons: number
-  total_evaluations: number
+  total_tasks: number
+  total_submissions: number
+  total_comparison_tasks: number
+  total_single_video_tasks: number
+  total_comparison_submissions: number
+  total_single_video_submissions: number
   evaluations_by_scenario: Record<string, number>
   target_evaluations_per_comparison: number
 }
@@ -109,7 +113,7 @@ export function ProgressTracker({ stats, comparisonProgress, experiments = [], l
               {Object.entries(stats.evaluations_by_scenario)
                 .sort(([,a], [,b]) => b - a)
                 .map(([scenario, count]) => {
-                  const percentage = stats.total_evaluations ? (count / stats.total_evaluations) * 100 : 0
+                  const percentage = stats.total_submissions ? (count / stats.total_submissions) * 100 : 0
                   return (
                     <div key={scenario} className="border rounded-lg p-4">
                       <div className="flex justify-between items-center mb-2">

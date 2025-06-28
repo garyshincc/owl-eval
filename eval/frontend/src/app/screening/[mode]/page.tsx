@@ -32,14 +32,23 @@ export default function ScreeningModePage() {
     const prolificId = sessionStorage.getItem('prolific_id')
     const sessionId = sessionStorage.getItem('session_id')
     const experimentId = sessionStorage.getItem('experiment_id')
+    const isProlific = sessionStorage.getItem('is_prolific')
     
-    if (!prolificId || !sessionId || !experimentId) {
-      console.warn('Missing participant info, redirecting to home')
+    if (isProlific && (!prolificId || !sessionId || !experimentId)) {
+      // For Prolific users, we need all the session data
+      console.warn('Missing Prolific participant info, redirecting to home')
       router.push('/')
       return
     }
     
-    setParticipantId(sessionId)
+    // For non-Prolific users, generate a session ID if needed
+    let actualParticipantId = sessionId
+    if (!actualParticipantId) {
+      actualParticipantId = `screening-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
+      sessionStorage.setItem('session_id', actualParticipantId)
+    }
+    
+    setParticipantId(actualParticipantId)
   }, [router])
 
   const handleAnswerChange = (taskId: string, value: string) => {

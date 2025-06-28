@@ -115,12 +115,12 @@ export function ModelPerformanceChart({ performance, loading }: ModelPerformance
     
     if (model) {
       model[item.dimension] = displayValue
-      model.total_evaluations += item.num_evaluations
+      model.total_submissions += item.num_evaluations
     } else {
       acc.push({
         model: item.model,
         [item.dimension]: displayValue,
-        total_evaluations: item.num_evaluations,
+        total_submissions: item.num_evaluations,
         evaluationType: item.evaluationType
       })
     }

@@ -470,9 +470,10 @@ export default function EvaluatePage() {
 
   useEffect(() => {
     // Check if screening has been completed before allowing evaluation
-    // Skip screening check if coming from admin (referrer contains 'admin')
+    // Skip screening check if coming from admin (referrer contains 'admin' or URL has admin=true)
     const screeningCompleted = sessionStorage.getItem('screening_completed')
-    const isFromAdmin = document.referrer.includes('/admin') || window.location.search.includes('admin=true')
+    const urlParams = new URLSearchParams(window.location.search)
+    const isFromAdmin = document.referrer.includes('/admin') || urlParams.get('admin') === 'true'
     
     if (!screeningCompleted && !isFromAdmin) {
       // Redirect to screening page if not completed
@@ -897,7 +898,10 @@ export default function EvaluatePage() {
             title: 'Next Video',
             description: 'Loading the next video for evaluation...'
           })
-          router.push(`/evaluate/${submitResult.next_video_task_id}`)
+          // Preserve admin parameter if present
+          const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true'
+          const nextUrl = isAdmin ? `/evaluate/${submitResult.next_video_task_id}?admin=true` : `/evaluate/${submitResult.next_video_task_id}`
+          router.push(nextUrl)
         } else {
           // Check if this is a Prolific session
           const isProlific = sessionStorage.getItem('is_prolific')
@@ -955,7 +959,10 @@ export default function EvaluatePage() {
             title: 'Next Comparison',
             description: 'Loading the next comparison for evaluation...'
           })
-          router.push(`/evaluate/${submitResult.next_comparison_id}`)
+          // Preserve admin parameter if present
+          const isAdmin = new URLSearchParams(window.location.search).get('admin') === 'true'
+          const nextUrl = isAdmin ? `/evaluate/${submitResult.next_comparison_id}?admin=true` : `/evaluate/${submitResult.next_comparison_id}`
+          router.push(nextUrl)
         } else {
           // Check if this is a Prolific session
           const isProlific = sessionStorage.getItem('is_prolific')
