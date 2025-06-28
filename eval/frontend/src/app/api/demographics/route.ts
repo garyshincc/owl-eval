@@ -98,13 +98,13 @@ export async function GET(request: NextRequest) {
     // We'll need to get the evaluation count from the experiment config or database
     const experiment = await prisma.experiment.findFirst({
       where: { participants: { some: { id: { in: participants.map(p => p.id) } } } },
-      include: { _count: { select: { comparisons: true } } }
+      include: { _count: { select: { twoVideoComparisonTasks: true } } }
     })
     
     let averageDollarPerEvaluation = undefined
     if (experiment && participantsWithPaymentData.length > 0) {
       // Assuming each participant evaluates all comparisons
-      const evaluationsPerParticipant = experiment._count.comparisons
+      const evaluationsPerParticipant = experiment._count.twoVideoComparisonTasks
       if (evaluationsPerParticipant > 0) {
         const dollarsPerEvaluation = participantsWithPaymentData.map(p => {
           const totalPaymentCents = p.submission!.totalPayment!

@@ -145,10 +145,10 @@ export async function POST(request: NextRequest) {
         evaluationWhere.participantId = { in: finalFilteredParticipants.map(p => p.id) }
       }
 
-      const comparisonEvaluations = await prisma.evaluation.findMany({
+      const comparisonEvaluations = await prisma.twoVideoComparisonSubmission.findMany({
         where: evaluationWhere,
         include: {
-          comparison: {
+          twoVideoComparisonTask: {
             select: {
               modelA: true,
               modelB: true,
@@ -217,8 +217,8 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const modelA = evaluation.comparison.modelA
-        const modelB = evaluation.comparison.modelB
+        const modelA = evaluation.twoVideoComparisonTask.modelA
+        const modelB = evaluation.twoVideoComparisonTask.modelB
         const clientMetadata = evaluation.clientMetadata as any
 
         if (!clientMetadata || typeof clientMetadata !== 'object') continue
@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
           if (typeof score !== 'string') continue
           
           // Use comparison.experimentId instead of evaluation.experimentId
-          const experimentId = evaluation.comparison.experimentId
+          const experimentId = evaluation.twoVideoComparisonTask.experimentId
           const dimensionKey = `${dimension}_${experimentId}`
           
           if (!comparisonStatsMap[dimensionKey]) {
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
             dimension: dimension,
             scenario: undefined,
             win_rate: modelAWinRate,
-            num_evaluations: stats.total,
+            num_twoVideoComparisonSubmissions: stats.total,
             experimentId: stats.experimentId,
             evaluationType: 'comparison',
             detailed_scores: {
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
             dimension: dimension,
             scenario: undefined,
             win_rate: modelBWinRate,
-            num_evaluations: stats.total,
+            num_twoVideoComparisonSubmissions: stats.total,
             experimentId: stats.experimentId,
             evaluationType: 'comparison',
             detailed_scores: {
@@ -458,7 +458,7 @@ export async function POST(request: NextRequest) {
             scenario: undefined,
             win_rate: qualityRate, // For single video, "win rate" = proportion of high scores
             quality_score: averageScore, // Average 1-5 rating
-            num_evaluations: stats.count,
+            num_twoVideoComparisonSubmissions: stats.count,
             experimentId: stats.experimentId,
             evaluationType: 'single_video',
             score_distribution: {

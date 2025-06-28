@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the comparison
-    const comparison = await prisma.comparison.create({
+    const comparison = await prisma.twoVideoComparisonTask.create({
       data: {
         experimentId,
         scenarioId,

@@ -29,8 +29,12 @@ import { DemographicsDashboard } from '@/components/admin/demographics-dashboard
 import { Breadcrumbs } from '@/components/navigation'
 
 interface EvaluationStats {
-  total_comparisons: number
-  total_evaluations: number
+  total_tasks: number
+  total_submissions: number
+  total_comparison_tasks: number
+  total_single_video_tasks: number
+  total_comparison_submissions: number
+  total_single_video_submissions: number
   evaluations_by_scenario: Record<string, number>
   target_evaluations_per_comparison: number
 }
@@ -68,11 +72,11 @@ interface Experiment {
   completedAt: string | null
   comparisons?: Array<any>
   _count: {
-    comparisons: number
-    videoTasks: number
+    twoVideoComparisonTasks: number
+    singleVideoEvaluationTasks: number
     participants: number
-    evaluations: number
-    singleVideoEvals: number
+    twoVideoComparisonSubmissions: number
+    singleVideoEvaluationSubmissions: number
   }
 }
 
@@ -132,11 +136,11 @@ export default function AdminPage() {
     try {
       const groupParam = selectedGroup ? `?group=${encodeURIComponent(selectedGroup)}` : ''
       const [statsRes, evalStatusRes, perfRes, expRes, progressRes] = await Promise.all([
-        fetch(`/api/evaluation-stats${groupParam}`),
-        fetch('/api/evaluation-status'),
+        fetch(`/api/submission-stats${groupParam}`),
+        fetch('/api/submission-status'),
         fetch(`/api/model-performance${groupParam}`),
         fetch('/api/experiments'),
-        fetch('/api/comparison-progress')
+        fetch('/api/two-video-comparison-progress')
       ])
       
       const [statsData, evalStatusData, perfData, expData, progressData] = await Promise.all([

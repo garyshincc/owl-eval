@@ -48,19 +48,19 @@ export async function GET(request: Request) {
     
     // Get total counts - only completed evaluations from non-archived experiments
     const [totalComparisons, totalEvaluations, totalVideoTasks, totalSingleVideoEvaluations] = await Promise.all([
-      prisma.comparison.count({
+      prisma.twoVideoComparisonTask.count({
         where: whereClause
       }),
-      prisma.evaluation.count({
+      prisma.twoVideoComparisonSubmission.count({
         where: {
           status: 'completed',
           ...evaluationWhereClause
         }
       }),
-      prisma.videoTask.count({
+      prisma.singleVideoEvaluationTask.count({
         where: whereClause
       }),
-      prisma.singleVideoEvaluation.count({
+      prisma.singleVideoEvaluationSubmission.count({
         where: {
           status: 'completed',
           ...evaluationWhereClause
@@ -70,14 +70,14 @@ export async function GET(request: Request) {
 
     // Get evaluations by scenario for both comparison and single video evaluations
     const [comparisons, videoTasks] = await Promise.all([
-      prisma.comparison.findMany({
+      prisma.twoVideoComparisonTask.findMany({
         where: whereClause,
         select: {
           id: true,
           scenarioId: true,
           _count: {
             select: {
-              evaluations: includeAnonymous ? {
+              twoVideoComparisonSubmissions: includeAnonymous ? {
                 where: {
                   status: 'completed',
                   participant: {
@@ -111,14 +111,14 @@ export async function GET(request: Request) {
           }
         }
       }),
-      prisma.videoTask.findMany({
+      prisma.singleVideoEvaluationTask.findMany({
         where: whereClause,
         select: {
           id: true,
           scenarioId: true,
           _count: {
             select: {
-              singleVideoEvals: includeAnonymous ? {
+              singleVideoEvaluationSubmissions: includeAnonymous ? {
                 where: {
                   status: 'completed',
                   participant: {
@@ -162,7 +162,7 @@ export async function GET(request: Request) {
       if (!evaluationsByScenario[scenario]) {
         evaluationsByScenario[scenario] = 0
       }
-      evaluationsByScenario[scenario] += comparison._count.evaluations
+      evaluationsByScenario[scenario] += comparison._count.twoVideoComparisonSubmissions
     }
     
     // Add single video evaluations by scenario
@@ -171,22 +171,28 @@ export async function GET(request: Request) {
       if (!evaluationsByScenario[scenario]) {
         evaluationsByScenario[scenario] = 0
       }
-      evaluationsByScenario[scenario] += videoTask._count.singleVideoEvals
+      evaluationsByScenario[scenario] += videoTask._count.singleVideoEvaluationSubmissions
     }
     
     return NextResponse.json({
-      total_comparisons: totalComparisons,
-      total_evaluations: totalEvaluations + totalSingleVideoEvaluations,
-      total_video_tasks: totalVideoTasks,
-      total_single_video_evaluations: totalSingleVideoEvaluations,
+      total_tasks: totalComparisons + totalVideoTasks,
+      total_submissions: totalEvaluations + totalSingleVideoEvaluations,
+      total_comparison_tasks: totalComparisons,
+      total_single_video_tasks: totalVideoTasks,
+      total_comparison_submissions: totalEvaluations,
+      total_single_video_submissions: totalSingleVideoEvaluations,
       evaluations_by_scenario: evaluationsByScenario,
       target_evaluations_per_comparison: 5 // Default target
     })
   } catch (error) {
     console.error('Error fetching stats:', error)
     return NextResponse.json({
-      total_comparisons: 0,
-      total_evaluations: 0,
+      total_tasks: 0,
+      total_submissions: 0,
+      total_comparison_tasks: 0,
+      total_single_video_tasks: 0,
+      total_comparison_submissions: 0,
+      total_single_video_submissions: 0,
       evaluations_by_scenario: {},
       target_evaluations_per_comparison: 5
     })

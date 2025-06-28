@@ -15,11 +15,11 @@ interface ComparisonProgress {
 
 export async function GET() {
   try {
-    const comparisons = await prisma.comparison.findMany({
+    const comparisons = await prisma.twoVideoComparisonTask.findMany({
       include: {
         _count: {
           select: {
-            evaluations: {
+            twoVideoComparisonSubmissions: {
               where: {
                 status: 'completed',
                 participant: {
@@ -75,10 +75,10 @@ export async function GET() {
         scenarioId: comparison.scenarioId,
         modelA: comparison.modelA,
         modelB: comparison.modelB,
-        evaluationCount: comparison._count.evaluations,
+        evaluationCount: comparison._count.twoVideoComparisonSubmissions,
         targetEvaluations,
         progressPercentage: targetEvaluations > 0
-          ? Math.round((comparison._count.evaluations / targetEvaluations) * 100)
+          ? Math.round((comparison._count.twoVideoComparisonSubmissions / targetEvaluations) * 100)
           : 0
       }
     })

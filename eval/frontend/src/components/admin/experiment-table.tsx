@@ -60,11 +60,11 @@ interface Experiment {
   startedAt: string | null
   completedAt: string | null
   _count: {
-    comparisons: number
-    videoTasks: number
+    twoVideoComparisonTasks: number
+    singleVideoEvaluationTasks: number
     participants: number
-    evaluations: number
-    singleVideoEvals: number
+    twoVideoComparisonSubmissions: number
+    singleVideoEvaluationSubmissions: number
   }
 }
 
@@ -104,27 +104,19 @@ export function ExperimentTable({
 
 
   const getProgressPercentage = (exp: Experiment) => {
-    if (exp.evaluationMode === 'single_video') {
-      if (exp._count.videoTasks === 0) return 0
-      const evaluationsPerVideo = exp.config?.evaluationsPerComparison || -1
-      const targetEvaluations = exp._count.videoTasks * evaluationsPerVideo
-      return Math.min((exp._count.singleVideoEvals / targetEvaluations) * 100, 100)
-    } else {
-      if (exp._count.comparisons === 0) return 0
-      const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
-      const targetEvaluations = exp._count.comparisons * evaluationsPerComparison
-      return Math.min((exp._count.evaluations / targetEvaluations) * 100, 100)
-    }
+    const totalTasks = exp._count.twoVideoComparisonTasks + exp._count.singleVideoEvaluationTasks
+    const totalSubmissions = exp._count.twoVideoComparisonSubmissions + exp._count.singleVideoEvaluationSubmissions
+    
+    if (totalTasks === 0) return 0
+    const evaluationsPerTask = exp.config?.evaluationsPerComparison || -1
+    const targetEvaluations = totalTasks * evaluationsPerTask
+    return Math.min((totalSubmissions / targetEvaluations) * 100, 100)
   }
 
   const getTargetEvaluations = (exp: Experiment) => {
-    if (exp.evaluationMode === 'single_video') {
-      const evaluationsPerVideo = exp.config?.evaluationsPerComparison || -1
-      return exp._count.videoTasks * evaluationsPerVideo
-    } else {
-      const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
-      return exp._count.comparisons * evaluationsPerComparison
-    }
+    const totalTasks = exp._count.twoVideoComparisonTasks + exp._count.singleVideoEvaluationTasks
+    const evaluationsPerTask = exp.config?.evaluationsPerComparison || -1
+    return totalTasks * evaluationsPerTask
   }
 
   const formatDate = (dateString: string) => {
@@ -603,19 +595,13 @@ export function ExperimentTable({
                       <div className="space-y-2 min-w-[120px]">
                         <div className="flex justify-between text-xs">
                           <span>
-                            {exp.evaluationMode === 'single_video' 
-                              ? exp._count.singleVideoEvals 
-                              : exp._count.evaluations
-                            } evaluations
+                            {exp._count.twoVideoComparisonSubmissions + exp._count.singleVideoEvaluationSubmissions} submissions
                           </span>
                           <span>{Math.round(getProgressPercentage(exp))}%</span>
                         </div>
                         <Progress value={getProgressPercentage(exp)} className="h-2" />
                         <div className="text-xs text-gray-500">
-                          {exp.evaluationMode === 'single_video' 
-                            ? exp._count.singleVideoEvals 
-                            : exp._count.evaluations
-                          }/{getTargetEvaluations(exp)} target
+                          {exp._count.twoVideoComparisonSubmissions + exp._count.singleVideoEvaluationSubmissions}/{getTargetEvaluations(exp)} target
                         </div>
                       </div>
                     </TableCell>
@@ -653,7 +639,7 @@ export function ExperimentTable({
                                 // Get the first available task for this experiment
                                 if (exp.evaluationMode === 'single_video') {
                                   console.log('Fetching video tasks for experiment:', exp.id)
-                                  const response = await fetch(`/api/video-tasks?experimentId=${exp.id}`)
+                                  const response = await fetch(`/api/single-video-evaluation-tasks?experimentId=${exp.id}`)
                                   console.log('Video tasks response:', response.status, response.ok)
                                   
                                   if (response.ok) {
@@ -679,7 +665,7 @@ export function ExperimentTable({
                                   }
                                 } else {
                                   console.log('Fetching comparisons for experiment:', exp.id)
-                                  const response = await fetch(`/api/comparisons?experimentId=${exp.id}`)
+                                  const response = await fetch(`/api/two-video-comparison-tasks?experimentId=${exp.id}`)
                                   console.log('Comparisons response:', response.status, response.ok)
                                   
                                   if (response.ok) {

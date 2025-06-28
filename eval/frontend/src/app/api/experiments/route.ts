@@ -24,8 +24,8 @@ export async function GET() {
         completedAt: true,
         _count: {
           select: {
-            comparisons: true,
-            videoTasks: true,
+            twoVideoComparisonTasks: true,
+            singleVideoEvaluationTasks: true,
             participants: {
               where: {
                 AND: [
@@ -44,7 +44,7 @@ export async function GET() {
                 ]
               }
             },
-            evaluations: {
+            twoVideoComparisonSubmissions: {
               where: {
                 status: 'completed',
                 participant: {
@@ -65,7 +65,7 @@ export async function GET() {
                 }
               }
             },
-            singleVideoEvals: {
+            singleVideoEvaluationSubmissions: {
               where: {
                 status: 'completed',
                 participant: {
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
 
     if (evaluationMode === 'single_video') {
       // Create video tasks for single video evaluation
-      experimentData.videoTasks = {
+      experimentData.singleVideoEvaluationTasks = {
         create: comparisons.map(comp => ({
           scenarioId: comp.scenarioId,
           modelName: comp.modelA,
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Create comparisons for comparison evaluation
-      experimentData.comparisons = {
+      experimentData.twoVideoComparisonTasks = {
         create: comparisons.map(comp => ({
           scenarioId: comp.scenarioId,
           modelA: comp.modelA,
@@ -201,12 +201,12 @@ export async function POST(request: NextRequest) {
     const experiment = await prisma.experiment.create({
       data: experimentData,
       include: {
-        comparisons: true,
-        videoTasks: true,
+        twoVideoComparisonTasks: true,
+        singleVideoEvaluationTasks: true,
         _count: {
           select: {
-            comparisons: true,
-            videoTasks: true,
+            twoVideoComparisonTasks: true,
+            singleVideoEvaluationTasks: true,
             participants: {
               where: {
                 AND: [
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
                 ]
               }
             },
-            evaluations: {
+            twoVideoComparisonSubmissions: {
               where: {
                 status: 'completed',
                 participant: {
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
                 }
               }
             },
-            singleVideoEvals: {
+            singleVideoEvaluationSubmissions: {
               where: {
                 status: 'completed',
                 participant: {

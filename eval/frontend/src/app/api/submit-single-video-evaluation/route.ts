@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     }
 
     // Get the video task to extract the experimentId
-    const videoTask = await prisma.videoTask.findUnique({
+    const videoTask = await prisma.singleVideoEvaluationTask.findUnique({
       where: { id: data.video_task_id },
     });
 
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       
       if (!existingParticipant) {
         // Get all video tasks for this experiment to assign them all
-        const allVideoTasks = await prisma.videoTask.findMany({
+        const allVideoTasks = await prisma.singleVideoEvaluationTask.findMany({
           where: { experimentId: actualExperimentId },
           select: { id: true }
         });
@@ -66,8 +66,8 @@ export async function POST(request: Request) {
               experimentId: actualExperimentId,
               sessionId: sessionId,
               status: 'active',
-              assignedComparisons: [], // Empty for single video mode
-              assignedVideoTasks: allVideoTasks.map(vt => vt.id),
+              assignedTwoVideoComparisonTasks: [], // Empty for single video mode
+              assignedSingleVideoEvaluationTasks: allVideoTasks.map(vt => vt.id),
             },
           });
           console.log('Participant created successfully:', actualParticipantId);
@@ -93,10 +93,10 @@ export async function POST(request: Request) {
     }
 
     // Check if there's already a completed evaluation for this participant/video task
-    const existingCompleteEvaluation = await prisma.singleVideoEvaluation.findUnique({
+    const existingCompleteEvaluation = await prisma.singleVideoEvaluationSubmission.findUnique({
       where: {
-        videoTaskId_participantId: {
-          videoTaskId: data.video_task_id,
+        singleVideoEvaluationTaskId_participantId: {
+          singleVideoEvaluationTaskId: data.video_task_id,
           participantId: actualParticipantId,
         },
       },
@@ -111,10 +111,10 @@ export async function POST(request: Request) {
     }
     
     // Update existing draft or create new evaluation
-    const evaluation = await prisma.singleVideoEvaluation.upsert({
+    const evaluation = await prisma.singleVideoEvaluationSubmission.upsert({
       where: {
-        videoTaskId_participantId: {
-          videoTaskId: data.video_task_id,
+        singleVideoEvaluationTaskId_participantId: {
+          singleVideoEvaluationTaskId: data.video_task_id,
           participantId: actualParticipantId
         }
       },
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
         lastSavedAt: new Date()
       },
       create: {
-        videoTaskId: data.video_task_id,
+        singleVideoEvaluationTaskId: data.video_task_id,
         participantId: actualParticipantId,
         experimentId: actualExperimentId,
         dimensionScores: data.dimension_scores,
@@ -147,15 +147,15 @@ export async function POST(request: Request) {
       const participant = await prisma.participant.findUnique({
         where: { id: data.participant_id },
         include: {
-          singleVideoEvals: true
+          singleVideoEvaluationSubmissions: true
         }
       })
       
       if (participant) {
-        const assignedVideoTasks = participant.assignedVideoTasks as string[]
-        const completedVideoTasks = participant.singleVideoEvals
+        const assignedVideoTasks = participant.assignedSingleVideoEvaluationTasks as string[]
+        const completedVideoTasks = participant.singleVideoEvaluationSubmissions
           .filter(e => e.status === 'completed')
-          .map(e => e.videoTaskId)
+          .map(e => e.singleVideoEvaluationTaskId)
         
         // Check if all assigned video tasks are completed
         const allCompleted = assignedVideoTasks.every(taskId => 
@@ -178,7 +178,7 @@ export async function POST(request: Request) {
     let nextVideoTask = null;
     
     // Get all video tasks in this experiment
-    const allVideoTasks = await prisma.videoTask.findMany({
+    const allVideoTasks = await prisma.singleVideoEvaluationTask.findMany({
       where: { 
         experimentId: actualExperimentId
       },
@@ -187,10 +187,10 @@ export async function POST(request: Request) {
 
     // Find video tasks that haven't been evaluated by this user
     for (const task of allVideoTasks) {
-      const existingEval = await prisma.singleVideoEvaluation.findUnique({
+      const existingEval = await prisma.singleVideoEvaluationSubmission.findUnique({
         where: {
-          videoTaskId_participantId: {
-            videoTaskId: task.id,
+          singleVideoEvaluationTaskId_participantId: {
+            singleVideoEvaluationTaskId: task.id,
             participantId: actualParticipantId
           }
         }

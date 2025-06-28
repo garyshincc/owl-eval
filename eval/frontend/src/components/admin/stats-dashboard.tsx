@@ -25,8 +25,12 @@ import {
 import { getOverallProgress } from '@/lib/utils/progress'
 
 interface EvaluationStats {
-  total_comparisons: number
-  total_evaluations: number
+  total_tasks: number
+  total_submissions: number
+  total_comparison_tasks: number
+  total_single_video_tasks: number
+  total_comparison_submissions: number
+  total_single_video_submissions: number
   evaluations_by_scenario: Record<string, number>
   target_evaluations_per_comparison: number
 }
@@ -143,7 +147,7 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
         <Card className="bg-gradient-to-br from-secondary/10 to-secondary/20 border-secondary/20 glow">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-secondary">Total Evaluations</CardTitle>
+              <CardTitle className="text-sm font-medium text-secondary">Total Submissions</CardTitle>
               <BarChart3 className="h-4 w-4 text-secondary" />
             </div>
           </CardHeader>
@@ -174,13 +178,13 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
         <Card className="bg-gradient-to-br from-muted to-muted/50 border-border glow">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Comparisons</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Tasks</CardTitle>
               <Target className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <p className="text-2xl font-bold text-foreground">{filteredExperiments.reduce((sum, exp) => sum + exp._count.comparisons, 0)}</p>
+              <p className="text-2xl font-bold text-foreground">{filteredExperiments.reduce((sum, exp) => sum + exp._count.twoVideoComparisonTasks + exp._count.singleVideoEvaluationTasks, 0)}</p>
             </div>
           </CardContent>
         </Card>

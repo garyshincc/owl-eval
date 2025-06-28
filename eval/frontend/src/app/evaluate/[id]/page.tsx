@@ -156,11 +156,11 @@ export default function EvaluatePage() {
   const fetchComparison = useCallback(async () => {
     try {
       // First try to fetch as comparison ID
-      let response = await fetch(`/api/comparisons/${params.id}`)
+      let response = await fetch(`/api/two-video-comparison-tasks/${params.id}`)
 
       if (!response.ok && response.status === 404) {
         // Not a comparison, try as video task ID
-        const videoResponse = await fetch(`/api/video-tasks/${params.id}`)
+        const videoResponse = await fetch(`/api/single-video-evaluation-tasks/${params.id}`)
         if (videoResponse.ok) {
           // It's a video task - handle as single video evaluation
           const videoData = await videoResponse.json()
@@ -196,7 +196,7 @@ export default function EvaluatePage() {
             return
           }
           
-          const draftResponse = await fetch(`/api/single-video-evaluations/draft?videoTaskId=${videoData.video_task_id}&participantId=${participantId}&sessionId=${sessionId}`)
+          const draftResponse = await fetch(`/api/single-video-evaluation-submissions/draft?videoTaskId=${videoData.video_task_id}&participantId=${participantId}&sessionId=${sessionId}`)
           
           if (draftResponse.ok) {
             const draftData = await draftResponse.json()
@@ -264,7 +264,7 @@ export default function EvaluatePage() {
       // Load any existing draft
       const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
       const sessionId = getSessionId()
-      const draftResponse = await fetch(`/api/evaluations/draft?comparisonId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
+      const draftResponse = await fetch(`/api/two-video-comparison-submissions/draft?comparisonId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
 
       if (draftResponse.ok) {
         const draftData = await draftResponse.json()
@@ -343,7 +343,7 @@ export default function EvaluatePage() {
 
       if (evaluationMode === 'single_video') {
         // Save single video evaluation draft
-        const response = await fetch('/api/single-video-evaluations/draft', {
+        const response = await fetch('/api/single-video-evaluation-submissions/draft', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -391,7 +391,7 @@ export default function EvaluatePage() {
         dimensionScores
       })
 
-      const response = await fetch('/api/evaluations/draft', {
+      const response = await fetch('/api/two-video-comparison-submissions/draft', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -925,7 +925,7 @@ export default function EvaluatePage() {
           }
         })
 
-        submitResponse = await fetch('/api/submit-evaluation', {
+        submitResponse = await fetch('/api/submit-two-video-comparison', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

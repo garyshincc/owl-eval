@@ -116,8 +116,8 @@ export class ProlificService {
       include: {
         _count: {
           select: { 
-            comparisons: true,
-            videoTasks: true
+            twoVideoComparisonTasks: true,
+            singleVideoEvaluationTasks: true
           }
         }
       }
@@ -142,11 +142,11 @@ export class ProlificService {
     let estimatedCompletionTime: number;
     if (experiment.evaluationMode === 'single_video') {
       // For single video: estimate 1 minute per video task
-      const videoTaskCount = experiment._count.videoTasks || 1;
+      const videoTaskCount = experiment._count.singleVideoEvaluationTasks || 1;
       estimatedCompletionTime = Math.max(1, Math.ceil(videoTaskCount * 1));
     } else {
       // For comparison: estimate 2 minutes per comparison
-      estimatedCompletionTime = Math.max(1, Math.ceil(experiment._count.comparisons * 2));
+      estimatedCompletionTime = Math.max(1, Math.ceil(experiment._count.twoVideoComparisonTasks * 2));
     }
     const studyCompletionCode = generateCompletionCode();
 
@@ -458,7 +458,7 @@ export class ProlificService {
               sessionId: `prolific_${submission['Participant id']}_${Date.now()}`,
               experimentId: experiment.id,
               status: submission['Status'].toLowerCase(),
-              assignedComparisons: [],
+              assignedTwoVideoComparisonTasks: [],
               metadata: {
                 demographics: participantInfo || null,
                 prolificSubmissionId: submission['Submission id'],
@@ -574,8 +574,8 @@ export class ProlificService {
                 }
               }
             },
-            evaluations: true,
-            comparisons: true
+            twoVideoComparisonSubmissions: true,
+            twoVideoComparisonTasks: true
           }
         }
       }

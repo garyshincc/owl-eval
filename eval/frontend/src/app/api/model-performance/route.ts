@@ -7,7 +7,7 @@ interface ModelPerformance {
   model: string
   dimension: string
   win_rate: number
-  num_evaluations: number
+  num_twoVideoComparisonSubmissions: number
 }
 
 export async function GET(request: Request) {
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
           }
         ]
       },
-      comparison: {
+      twoVideoComparisonTask: {
         experiment: {
           archived: false,
           ...(groupFilter && { group: groupFilter })
@@ -44,10 +44,10 @@ export async function GET(request: Request) {
     }
     
     // Get all completed evaluations with their comparison data from non-archived experiments
-    const evaluations = await prisma.evaluation.findMany({
+    const evaluations = await prisma.twoVideoComparisonSubmission.findMany({
       where: whereClause,
       include: {
-        comparison: true
+        twoVideoComparisonTask: true
       }
     })
 
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
     for (const evaluation of evaluations) {
       const dimensionScores = evaluation.dimensionScores as Record<string, string>
-      const { modelA, modelB } = evaluation.comparison
+      const { modelA, modelB } = evaluation.twoVideoComparisonTask
 
       // Initialize model stats if needed
       if (!modelStats[modelA]) modelStats[modelA] = {}
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
             model,
             dimension,
             win_rate: stats.wins / stats.total,
-            num_evaluations: stats.total
+            num_twoVideoComparisonSubmissions: stats.total
           })
         }
       }

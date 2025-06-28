@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const videoTask = await prisma.videoTask.findUnique({
+    const videoTask = await prisma.singleVideoEvaluationTask.findUnique({
       where: { id },
       include: {
         experiment: {

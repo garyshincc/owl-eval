@@ -68,13 +68,13 @@ export default function Home() {
         if (experiment && experiment.evaluationMode === 'single_video') {
           setExperimentMode('single_video')
           // Fetch video tasks for single video experiments
-          const response = await fetch(`/api/video-tasks?experimentId=${experimentId}`)
+          const response = await fetch(`/api/single-video-evaluation-tasks?experimentId=${experimentId}`)
           const data = await response.json()
           setVideoTasks(data)
         } else {
           setExperimentMode('comparison')
           // Fetch comparisons for comparison experiments
-          const response = await fetch(`/api/comparisons?experimentId=${experimentId}`)
+          const response = await fetch(`/api/two-video-comparison-tasks?experimentId=${experimentId}`)
           const data = await response.json()
           setComparisons(data)
         }
@@ -83,8 +83,8 @@ export default function Home() {
         console.log('Fetching all available experiments for non-Prolific user')
         
         const [comparisonsResponse, videoTasksResponse] = await Promise.all([
-          fetch('/api/comparisons'),
-          fetch('/api/video-tasks')
+          fetch('/api/two-video-comparison-tasks'),
+          fetch('/api/single-video-evaluation-tasks')
         ])
         
         const comparisonsData = await comparisonsResponse.json()

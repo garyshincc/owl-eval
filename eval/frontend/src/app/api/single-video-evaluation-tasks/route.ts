@@ -10,11 +10,11 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const experimentId = url.searchParams.get('experimentId')
     
-    let comparisons
+    let videoTasks
     
     if (experimentId) {
-      // Get comparisons for specific experiment
-      comparisons = await prisma.comparison.findMany({
+      // Get video tasks for specific experiment
+      videoTasks = await prisma.singleVideoEvaluationTask.findMany({
         where: { experimentId },
         include: {
           experiment: {
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
           },
           _count: {
             select: { 
-              evaluations: {
+              singleVideoEvaluationSubmissions: {
                 where: {
                   status: 'completed'
                 }
@@ -36,8 +36,11 @@ export async function GET(request: Request) {
         orderBy: { createdAt: 'desc' }
       })
     } else {
-      // Get all public-visible experiments' comparisons for non-Prolific users
+      // Get all public-visible experiments' video tasks for non-Prolific users
       const publicExperiments = await prisma.experiment.findMany({
+        where: { 
+          evaluationMode: 'single_video'
+        },
         select: { id: true, status: true }
       })
       
@@ -46,7 +49,7 @@ export async function GET(request: Request) {
         .filter(exp => isVisibleToPublic(exp.status))
         .map(exp => exp.id)
       
-      comparisons = await prisma.comparison.findMany({
+      videoTasks = await prisma.singleVideoEvaluationTask.findMany({
         where: {
           experimentId: {
             in: visibleExperimentIds
@@ -61,7 +64,7 @@ export async function GET(request: Request) {
           },
           _count: {
             select: { 
-              evaluations: {
+              singleVideoEvaluationSubmissions: {
                 where: {
                   status: 'completed'
                 }
@@ -73,19 +76,22 @@ export async function GET(request: Request) {
       })
     }
     
-    const comparisonList = comparisons.map(comparison => ({
-      comparison_id: comparison.id,
-      scenario_id: comparison.scenarioId,
-      created_at: comparison.createdAt.toISOString(),
-      num_evaluations: comparison._count.evaluations,
-      evaluation_url: `/evaluate/${comparison.id}`,
-      experiment_name: comparison.experiment?.name,
-      experiment_created_at: comparison.experiment?.createdAt.toISOString()
+    const videoTaskList = videoTasks.map(videoTask => ({
+      video_task_id: videoTask.id,
+      id: videoTask.id,
+      scenario_id: videoTask.scenarioId,
+      model_name: videoTask.modelName,
+      video_path: videoTask.videoPath,
+      created_at: videoTask.createdAt.toISOString(),
+      num_evaluations: videoTask._count.singleVideoEvaluationSubmissions,
+      evaluation_url: `/evaluate/${videoTask.id}`,
+      experiment_name: videoTask.experiment?.name,
+      experiment_created_at: videoTask.experiment?.createdAt.toISOString()
     }))
     
-    return NextResponse.json(comparisonList)
+    return NextResponse.json(videoTaskList)
   } catch (error) {
-    console.error('Error fetching comparisons:', error)
-    return NextResponse.json({ error: 'Failed to fetch comparisons' }, { status: 500 })
+    console.error('Error fetching video tasks:', error)
+    return NextResponse.json({ error: 'Failed to fetch video tasks' }, { status: 500 })
   }
 }

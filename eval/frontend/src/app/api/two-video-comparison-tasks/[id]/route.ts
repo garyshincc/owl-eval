@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const comparison = await prisma.comparison.findUnique({
+    const comparison = await prisma.twoVideoComparisonTask.findUnique({
       where: { id },
       include: {
         experiment: {

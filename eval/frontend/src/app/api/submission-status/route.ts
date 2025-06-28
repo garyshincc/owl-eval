@@ -37,34 +37,34 @@ export async function GET(request: Request) {
     
     // Get evaluation counts by status for both evaluation types
     const [completed, draft, total, singleVideoCompleted, singleVideoDraft, singleVideoTotal] = await Promise.all([
-      prisma.evaluation.count({
+      prisma.twoVideoComparisonSubmission.count({
         where: { 
           status: 'completed',
           ...participantFilter
         }
       }),
-      prisma.evaluation.count({
+      prisma.twoVideoComparisonSubmission.count({
         where: { 
           status: 'draft',
           ...participantFilter
         }
       }),
-      prisma.evaluation.count({
+      prisma.twoVideoComparisonSubmission.count({
         where: participantFilter
       }),
-      prisma.singleVideoEvaluation.count({
+      prisma.singleVideoEvaluationSubmission.count({
         where: { 
           status: 'completed',
           ...participantFilter
         }
       }),
-      prisma.singleVideoEvaluation.count({
+      prisma.singleVideoEvaluationSubmission.count({
         where: { 
           status: 'draft',
           ...participantFilter
         }
       }),
-      prisma.singleVideoEvaluation.count({
+      prisma.singleVideoEvaluationSubmission.count({
         where: participantFilter
       })
     ])

@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
     const experiment = await prisma.experiment.findUnique({
       where: { prolificStudyId: studyId },
       include: { 
-        comparisons: true,
-        videoTasks: true 
+        twoVideoComparisonTasks: true,
+        singleVideoEvaluationTasks: true 
       }
     })
 
@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
           experimentId: experiment.id,
           sessionId: sessionId,
           status: 'active',
-          assignedComparisons: evaluationMode === 'comparison' ? experiment.comparisons.map(c => c.id) : [],
-          assignedVideoTasks: evaluationMode === 'single_video' ? experiment.videoTasks.map(vt => vt.id) : [],
+          assignedTwoVideoComparisonTasks: evaluationMode === 'comparison' ? experiment.twoVideoComparisonTasks.map(c => c.id) : [],
+          assignedSingleVideoEvaluationTasks: evaluationMode === 'single_video' ? experiment.singleVideoEvaluationTasks.map(vt => vt.id) : [],
           metadata: {
             studyId: studyId,
             firstAccessed: new Date().toISOString()

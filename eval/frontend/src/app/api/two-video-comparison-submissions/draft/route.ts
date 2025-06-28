@@ -4,46 +4,47 @@ import { prisma } from '@/lib/prisma';
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
-    console.log('Single video draft API received data:', data);
+    console.log('Draft API received data:', data);
     
     const {
-      videoTaskId,
+      twoVideoComparisonTaskId,
       participantId,
       experimentId,
+      chosenModel,
       dimensionScores,
       completionTimeSeconds,
       clientMetadata,
       prolificPid,
     } = data;
 
-    if (!videoTaskId) {
-      console.error('Missing videoTaskId in draft save request');
+    if (!twoVideoComparisonTaskId) {
+      console.error('Missing twoVideoComparisonTaskId in draft save request');
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    // Get the video task to extract the experimentId
-    const videoTask = await prisma.videoTask.findUnique({
-      where: { id: videoTaskId },
+    // Get the two-video comparison task to extract the experimentId
+    const comparison = await prisma.twoVideoComparisonTask.findUnique({
+      where: { id: twoVideoComparisonTaskId },
     });
 
-    if (!videoTask) {
+    if (!comparison) {
       return NextResponse.json(
-        { error: 'Video task not found' },
+        { error: 'Comparison not found' },
         { status: 404 }
       );
     }
 
-    const actualExperimentId = experimentId || videoTask.experimentId;
+    const actualExperimentId = experimentId || comparison.experimentId;
 
     // For anonymous users, create a consistent identifier based on session only
     let actualParticipantId = participantId;
     
     // If this is an anonymous user (no participant ID from database)
     if (!participantId || participantId === 'anonymous') {
-      // Use session identifier only for anonymous users (consistent across video tasks)
+      // Use session identifier only for anonymous users (consistent across comparisons)
       const sessionId = clientMetadata?.sessionId || 'anon-session';
       actualParticipantId = `anon-${sessionId}`;
       
@@ -53,13 +54,13 @@ export async function POST(request: NextRequest) {
       });
       
       if (!existingParticipant) {
-        // Get all video tasks for this experiment to assign them all
-        const allVideoTasks = await prisma.videoTask.findMany({
+        // Get all two-video comparison tasks for this experiment to assign them all
+        const allComparisons = await prisma.twoVideoComparisonTask.findMany({
           where: { experimentId: actualExperimentId },
           select: { id: true }
         });
         
-        // Create an anonymous participant record with all video tasks assigned
+        // Create an anonymous participant record with all two-video comparison tasks assigned
         await prisma.participant.create({
           data: {
             id: actualParticipantId,
@@ -67,18 +68,17 @@ export async function POST(request: NextRequest) {
             experimentId: actualExperimentId,
             sessionId: sessionId,
             status: 'active',
-            assignedComparisons: [], // Empty for single video mode
-            assignedVideoTasks: allVideoTasks.map(vt => vt.id),
+            assignedTwoVideoComparisonTasks: allComparisons.map(c => c.id),
           },
         });
       }
     }
 
-    // Check if there's already a completed evaluation for this participant/video task
-    const existingEvaluation = await prisma.singleVideoEvaluation.findUnique({
+    // Check if there's already a completed evaluation for this participant/comparison
+    const existingEvaluation = await prisma.twoVideoComparisonSubmission.findUnique({
       where: {
-        videoTaskId_participantId: {
-          videoTaskId,
+        twoVideoComparisonTaskId_participantId: {
+          twoVideoComparisonTaskId,
           participantId: actualParticipantId,
         },
       },
@@ -92,23 +92,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const evaluation = await prisma.singleVideoEvaluation.upsert({
+    const evaluation = await prisma.twoVideoComparisonSubmission.upsert({
       where: {
-        videoTaskId_participantId: {
-          videoTaskId,
+        twoVideoComparisonTaskId_participantId: {
+          twoVideoComparisonTaskId,
           participantId: actualParticipantId,
         },
       },
       update: {
+        chosenModel,
         dimensionScores: dimensionScores || {},
         completionTimeSeconds,
         clientMetadata,
         lastSavedAt: new Date(),
       },
       create: {
-        videoTaskId,
+        twoVideoComparisonTaskId,
         participantId: actualParticipantId,
         experimentId: actualExperimentId,
+        chosenModel,
         dimensionScores: dimensionScores || {},
         completionTimeSeconds,
         clientMetadata,
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
       lastSavedAt: evaluation.lastSavedAt,
     });
   } catch (error) {
-    console.error('Error saving draft single video evaluation:', error);
+    console.error('Error saving draft evaluation:', error);
     return NextResponse.json(
       { error: 'Failed to save draft evaluation' },
       { status: 500 }
@@ -133,11 +135,11 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const videoTaskId = searchParams.get('videoTaskId');
+    const twoVideoComparisonTaskId = searchParams.get('twoVideoComparisonTaskId');
     const participantId = searchParams.get('participantId');
     const sessionId = searchParams.get('sessionId');
 
-    if (!videoTaskId) {
+    if (!twoVideoComparisonTaskId) {
       return NextResponse.json(
         { error: 'Missing required parameters' },
         { status: 400 }
@@ -155,10 +157,10 @@ export async function GET(request: NextRequest) {
       actualParticipantId = 'anonymous-user';
     }
 
-    const evaluation = await prisma.singleVideoEvaluation.findUnique({
+    const evaluation = await prisma.twoVideoComparisonSubmission.findUnique({
       where: {
-        videoTaskId_participantId: {
-          videoTaskId,
+        twoVideoComparisonTaskId_participantId: {
+          twoVideoComparisonTaskId,
           participantId: actualParticipantId,
         },
       },
@@ -173,6 +175,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       draft: {
+        chosenModel: evaluation.chosenModel,
         dimensionScores: evaluation.dimensionScores,
         completionTimeSeconds: evaluation.completionTimeSeconds,
         lastSavedAt: evaluation.lastSavedAt,
@@ -180,7 +183,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching draft single video evaluation:', error);
+    console.error('Error fetching draft evaluation:', error);
     return NextResponse.json(
       { error: 'Failed to fetch draft evaluation' },
       { status: 500 }

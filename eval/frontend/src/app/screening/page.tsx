@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,22 +10,53 @@ import { AlertCircle, CheckCircle, Play } from 'lucide-react'
 export default function ScreeningPage() {
   const router = useRouter()
   const [canProceed, setCanProceed] = useState(false)
+  const [evaluationMode, setEvaluationMode] = useState<'comparison' | 'single_video'>('comparison')
+  const [loading, setLoading] = useState(true)
 
-  const handleStartEvaluations = () => {
-    // Set a flag to indicate screening was completed
-    sessionStorage.setItem('screening_completed', 'true')
+  useEffect(() => {
+    // Determine evaluation mode from experiment
+    const experimentId = sessionStorage.getItem('experiment_id')
     
-    // Check if this is a Prolific session and redirect accordingly
-    const isProlific = sessionStorage.getItem('is_prolific')
-    if (isProlific) {
-      router.push('/prolific')
+    if (experimentId) {
+      fetch('/api/experiments')
+        .then(res => res.json())
+        .then(experiments => {
+          const experiment = experiments.find((exp: any) => exp.id === experimentId)
+          if (experiment) {
+            setEvaluationMode(experiment.evaluationMode || 'comparison')
+          }
+          setLoading(false)
+        })
+        .catch(error => {
+          console.error('Error fetching experiment mode:', error)
+          setLoading(false)
+        })
     } else {
-      router.push('/')
+      // For non-Prolific users, default to comparison mode
+      setLoading(false)
     }
+  }, [])
+
+  const handleStartScreening = () => {
+    // Redirect to mode-specific screening, converting underscores to hyphens for URL
+    const urlMode = evaluationMode === 'single_video' ? 'single-video' : 'comparison'
+    router.push(`/screening/${urlMode}`)
   }
 
   const handleUnderstand = () => {
     setCanProceed(true)
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-slate-400">Loading screening information...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -146,12 +177,12 @@ export default function ScreeningPage() {
                 </div>
                 
                 <Button 
-                  onClick={handleStartEvaluations}
+                  onClick={handleStartScreening}
                   className="bg-cyan-600 hover:bg-cyan-700 text-white"
                   size="lg"
                 >
                   <Play className="mr-2 h-5 w-5" />
-                  Start Evaluations
+                  Begin Screening Test
                 </Button>
               </div>
             )}

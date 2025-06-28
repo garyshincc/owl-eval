@@ -11,10 +11,10 @@ export async function GET(
     const experiment = await prisma.experiment.findUnique({
       where: { id },
       include: {
-        comparisons: true,
+        twoVideoComparisonTasks: true,
         _count: {
           select: {
-            comparisons: true,
+            twoVideoComparisonTasks: true,
             participants: {
               where: {
                 id: {
@@ -24,7 +24,7 @@ export async function GET(
                 }
               }
             },
-            evaluations: {
+            twoVideoComparisonSubmissions: {
               where: {
                 participant: {
                   id: {
@@ -84,7 +84,7 @@ export async function PUT(
       include: {
         _count: {
           select: {
-            comparisons: true,
+            twoVideoComparisonTasks: true,
             participants: {
               where: {
                 id: {
@@ -94,7 +94,7 @@ export async function PUT(
                 }
               }
             },
-            evaluations: {
+            twoVideoComparisonSubmissions: {
               where: {
                 participant: {
                   id: {
@@ -135,7 +135,7 @@ export async function DELETE(
       include: {
         _count: {
           select: {
-            evaluations: {
+            twoVideoComparisonSubmissions: {
               where: {
                 participant: {
                   id: {
@@ -146,7 +146,7 @@ export async function DELETE(
                 }
               }
             },
-            singleVideoEvals: {
+            singleVideoEvaluationSubmissions: {
               where: {
                 status: 'completed',
                 participant: {
@@ -168,7 +168,7 @@ export async function DELETE(
     }
 
     // Check if experiment has evaluations and is not archived
-    const totalEvaluations = experiment._count.evaluations + (experiment._count.singleVideoEvals || 0);
+    const totalEvaluations = experiment._count.twoVideoComparisonSubmissions + (experiment._count.singleVideoEvaluationSubmissions || 0);
     if (totalEvaluations > 0 && !experiment.archived) {
       return NextResponse.json(
         { error: 'Cannot delete experiment with existing evaluations. Archive it first.' },
@@ -187,12 +187,12 @@ export async function DELETE(
     const participantIds = participants.map(p => p.id);
 
     // 1. Delete evaluations first (they reference comparisons and participants)
-    await prisma.evaluation.deleteMany({
+    await prisma.twoVideoComparisonSubmission.deleteMany({
       where: { experimentId: id }
     });
 
     // 2. Delete ALL single video evaluations for this experiment
-    await prisma.singleVideoEvaluation.deleteMany({
+    await prisma.singleVideoEvaluationSubmission.deleteMany({
       where: { experimentId: id }
     });
 
@@ -202,12 +202,12 @@ export async function DELETE(
     });
 
     // 4. Delete comparisons (they reference experiment)
-    await prisma.comparison.deleteMany({
+    await prisma.twoVideoComparisonTask.deleteMany({
       where: { experimentId: id }
     });
 
     // 5. Delete video tasks (they reference experiment)
-    await prisma.videoTask.deleteMany({
+    await prisma.singleVideoEvaluationTask.deleteMany({
       where: { experimentId: id }
     });
 

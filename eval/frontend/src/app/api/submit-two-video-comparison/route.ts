@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     }
 
     // Get the comparison to extract the experimentId
-    const comparison = await prisma.comparison.findUnique({
+    const comparison = await prisma.twoVideoComparisonTask.findUnique({
       where: { id: data.comparison_id },
     });
 
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       
       if (!existingParticipant) {
         // Get all comparisons for this experiment to assign them all
-        const allComparisons = await prisma.comparison.findMany({
+        const allComparisons = await prisma.twoVideoComparisonTask.findMany({
           where: { experimentId: actualExperimentId },
           select: { id: true }
         });
@@ -59,8 +59,8 @@ export async function POST(request: Request) {
               experimentId: actualExperimentId,
               sessionId: sessionId,
               status: 'active',
-              assignedComparisons: allComparisons.map(c => c.id),
-              assignedVideoTasks: [], // Empty for comparison mode
+              assignedTwoVideoComparisonTasks: allComparisons.map(c => c.id),
+              assignedSingleVideoEvaluationTasks: [], // Empty for comparison mode
             },
           });
         } catch (error) {
@@ -72,10 +72,10 @@ export async function POST(request: Request) {
     }
 
     // Check if there's already a completed evaluation for this participant/comparison
-    const existingCompleteEvaluation = await prisma.evaluation.findUnique({
+    const existingCompleteEvaluation = await prisma.twoVideoComparisonSubmission.findUnique({
       where: {
-        comparisonId_participantId: {
-          comparisonId: data.comparison_id,
+        twoVideoComparisonTaskId_participantId: {
+          twoVideoComparisonTaskId: data.comparison_id,
           participantId: actualParticipantId,
         },
       },
@@ -102,10 +102,10 @@ export async function POST(request: Request) {
     }
     
     // Update existing draft or create new evaluation
-    const evaluation = await prisma.evaluation.upsert({
+    const evaluation = await prisma.twoVideoComparisonSubmission.upsert({
       where: {
-        comparisonId_participantId: {
-          comparisonId: data.comparison_id,
+        twoVideoComparisonTaskId_participantId: {
+          twoVideoComparisonTaskId: data.comparison_id,
           participantId: actualParticipantId
         }
       },
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
         lastSavedAt: new Date()
       },
       create: {
-        comparisonId: data.comparison_id,
+        twoVideoComparisonTaskId: data.comparison_id,
         participantId: actualParticipantId,
         experimentId: actualExperimentId,
         chosenModel: chosenModel,
@@ -142,13 +142,13 @@ export async function POST(request: Request) {
       const participant = await prisma.participant.findUnique({
         where: { id: data.participant_id },
         include: {
-          evaluations: true
+          twoVideoComparisonSubmissions: true
         }
       })
       
       if (participant) {
-        const assignedComparisons = participant.assignedComparisons as string[]
-        const completedComparisons = participant.evaluations.map(e => e.comparisonId)
+        const assignedComparisons = participant.assignedTwoVideoComparisonTasks as string[]
+        const completedComparisons = participant.twoVideoComparisonSubmissions.map(e => e.twoVideoComparisonTaskId)
         
         // Check if all assigned comparisons are completed
         const allCompleted = assignedComparisons.every(compId => 
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
     let nextComparison = null;
     
     // Get all comparisons in this experiment
-    const allComparisons = await prisma.comparison.findMany({
+    const allComparisons = await prisma.twoVideoComparisonTask.findMany({
       where: { 
         experimentId: actualExperimentId
       },
@@ -180,10 +180,10 @@ export async function POST(request: Request) {
 
     // Find comparisons that haven't been evaluated by this user
     for (const comp of allComparisons) {
-      const existingEval = await prisma.evaluation.findUnique({
+      const existingEval = await prisma.twoVideoComparisonSubmission.findUnique({
         where: {
-          comparisonId_participantId: {
-            comparisonId: comp.id,
+          twoVideoComparisonTaskId_participantId: {
+            twoVideoComparisonTaskId: comp.id,
             participantId: actualParticipantId
           }
         }
