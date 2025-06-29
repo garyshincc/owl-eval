@@ -12,5 +12,8 @@
   "devDependencies": {
     "@types/papaparse": "^5.3.16",
     "prisma": "^6.8.2"
+  },
+  "scripts": {
+    "prepare": "husky"
   }
 }
