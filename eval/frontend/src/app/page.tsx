@@ -39,9 +39,10 @@ export default function Home() {
   const fetchExperiments = async () => {
     try {
       const experimentId = sessionStorage.getItem('experiment_id')
+      const isProlific = sessionStorage.getItem('is_prolific')
       
-      if (experimentId) {
-        // For Prolific sessions, only show the specific experiment
+      if (experimentId && isProlific) {
+        // For Prolific sessions only, show the specific experiment
         const response = await fetch(`/api/experiments`)
         if (!response.ok) {
           throw new Error('Failed to load experiment data')
@@ -79,12 +80,11 @@ export default function Home() {
   }
 
   const getExperimentStartUrl = (experiment: Experiment) => {
-    // For experiments, we need to get the first task
-    // We'll use the experiment's evaluation mode to determine which API to call
+    // Include experiment ID in URL for proper routing
     if (experiment.evaluationMode === 'single_video') {
-      return `/screening/single-video` // Start with screening for single video experiments
+      return `/screening/single-video?experimentId=${experiment.id}`
     } else {
-      return `/screening/comparison` // Start with screening for comparison experiments
+      return `/screening/comparison?experimentId=${experiment.id}`
     }
   }
 
@@ -178,36 +178,36 @@ export default function Home() {
                   href={getExperimentStartUrl(experiment)}
                 >
                   <Card className="cursor-pointer hover:bg-slate-700/30 transition-colors border-slate-600/50">
-                    <CardContent className="flex items-center justify-between py-4">
-                      <div className="flex-1">
-                        <p className="font-medium text-slate-200">{experiment.name}</p>
-                        <p className="text-sm text-slate-400 mb-2">
-                          Created: {new Date(experiment.createdAt).toLocaleDateString()}
+                  <CardContent className="flex items-center justify-between py-4">
+                    <div className="flex-1">
+                      <p className="font-medium text-slate-200">{experiment.name}</p>
+                      <p className="text-sm text-slate-400 mb-2">
+                        Created: {new Date(experiment.createdAt).toLocaleDateString()}
+                      </p>
+                      {experiment.description && (
+                        <p className="text-sm text-slate-300 max-w-2xl">
+                          {experiment.description}
                         </p>
-                        {experiment.description && (
-                          <p className="text-sm text-slate-300 max-w-2xl">
-                            {experiment.description}
-                          </p>
-                        )}
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <Badge variant="secondary" className={
+                          experiment.evaluationMode === 'single_video' 
+                            ? "bg-purple-700 text-purple-200 border-purple-600"
+                            : "bg-blue-700 text-blue-200 border-blue-600"
+                        }>
+                          {experiment.evaluationMode === 'single_video' ? 'Single Video' : 'Comparison'}
+                        </Badge>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {getTotalTasks(experiment)} tasks
+                        </p>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <Badge variant="secondary" className={
-                            experiment.evaluationMode === 'single_video' 
-                              ? "bg-purple-700 text-purple-200 border-purple-600"
-                              : "bg-blue-700 text-blue-200 border-blue-600"
-                          }>
-                            {experiment.evaluationMode === 'single_video' ? 'Single Video' : 'Comparison'}
-                          </Badge>
-                          <p className="text-xs text-slate-400 mt-1">
-                            {getTotalTasks(experiment)} tasks
-                          </p>
-                        </div>
-                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">
-                          Begin Study
-                        </Button>
-                      </div>
-                    </CardContent>
+                      <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 text-slate-900">
+                        Begin Study
+                      </Button>
+                    </div>
+                  </CardContent>
                   </Card>
                 </Link>
               ))}

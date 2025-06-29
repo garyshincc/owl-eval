@@ -196,7 +196,7 @@ export default function EvaluatePage() {
             return
           }
           
-          const draftResponse = await fetch(`/api/single-video-evaluation-submissions/draft?videoTaskId=${videoData.video_task_id}&participantId=${participantId}&sessionId=${sessionId}`)
+          const draftResponse = await fetch(`/api/single-video-evaluation-submissions/draft?singleVideoEvaluationTaskId=${videoData.video_task_id}&participantId=${participantId}&sessionId=${sessionId}`)
           
           if (draftResponse.ok) {
             const draftData = await draftResponse.json()

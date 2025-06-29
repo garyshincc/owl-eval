@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { getScreeningConfig, validateScreeningAnswers, ScreeningVideoTask, Scree
 export default function ScreeningModePage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const urlMode = params.mode as string
   const mode = urlMode === 'single-video' ? 'single_video' : 'comparison'
   
@@ -28,10 +29,19 @@ export default function ScreeningModePage() {
   const isLastTask = currentTaskIndex === config.tasks.tasks.length - 1
 
   useEffect(() => {
+    // Get experiment ID from URL parameters first, then fallback to session storage
+    const urlExperimentId = searchParams.get('experimentId')
+    const sessionExperimentId = sessionStorage.getItem('experiment_id')
+    const experimentId = urlExperimentId || sessionExperimentId
+    
+    // Store experiment ID in session storage if we got it from URL (always overwrite)
+    if (urlExperimentId) {
+      sessionStorage.setItem('experiment_id', urlExperimentId)
+    }
+    
     // Get participant info from session storage
     const prolificId = sessionStorage.getItem('prolific_id')
     const sessionId = sessionStorage.getItem('session_id')
-    const experimentId = sessionStorage.getItem('experiment_id')
     const isProlific = sessionStorage.getItem('is_prolific')
     
     if (isProlific && (!prolificId || !sessionId || !experimentId)) {
@@ -56,7 +66,7 @@ export default function ScreeningModePage() {
     }
     
     setParticipantId(actualParticipantId)
-  }, [router])
+  }, [router, searchParams])
 
   const handleAnswerChange = (taskId: string, value: string) => {
     setAnswers(prev => ({
@@ -108,7 +118,12 @@ export default function ScreeningModePage() {
         
         // Get the next available task for this participant
         const experimentId = sessionStorage.getItem('experiment_id')
-        const nextTaskResponse = await fetch(`/api/next-task?participantId=${participantId}&experimentId=${experimentId || ''}`)
+        if (!experimentId) {
+          console.error('No experiment ID found in session storage')
+          router.push('/')
+          return
+        }
+        const nextTaskResponse = await fetch(`/api/next-task?participantId=${participantId}&experimentId=${experimentId}`)
         
         if (nextTaskResponse.ok) {
           const nextTaskData = await nextTaskResponse.json()
@@ -235,7 +250,11 @@ export default function ScreeningModePage() {
                           Thank you for your time. You may try other available studies.
                         </p>
                         <Button 
-                          onClick={() => router.push('/')}
+                          onClick={() => {
+                            // Clear experiment context for anonymous users so they can try other experiments
+                            sessionStorage.removeItem('experiment_id')
+                            router.push('/')
+                          }}
                           className="bg-slate-600 hover:bg-slate-700 text-white"
                         >
                           Return to Home
