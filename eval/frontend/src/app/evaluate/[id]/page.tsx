@@ -397,7 +397,7 @@ export default function EvaluatePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          comparisonId: actualComparisonId || params.id,
+          twoVideoComparisonTaskId: actualComparisonId || params.id,
           participantId,
           experimentId,
           prolificPid,
