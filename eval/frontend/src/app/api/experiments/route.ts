@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth-middleware';
 import { prisma } from '@/lib/prisma';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
-export async function GET() {
+async function fetchExperimentsWithRetry(retryCount = 0): Promise<any[]> {
   try {
-    const experiments = await prisma.experiment.findMany({
+    return await prisma.experiment.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -90,10 +91,32 @@ export async function GET() {
         }
       }
     });
+  } catch (error) {
+    const isRetryableError = error instanceof PrismaClientKnownRequestError && 
+      ['P1001', 'P1008', 'P1017', 'P2024'].includes(error.code);
     
+    if (isRetryableError && retryCount < 2) {
+      console.warn(`Database operation failed (attempt ${retryCount + 1}/3). Retrying...`, error.code);
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      return fetchExperimentsWithRetry(retryCount + 1);
+    }
+    
+    throw error;
+  }
+}
+
+export async function GET() {
+  try {
+    const experiments = await fetchExperimentsWithRetry();
     return NextResponse.json(experiments);
   } catch (error) {
     console.error('Error fetching experiments:', error);
+    
+    if (error instanceof PrismaClientKnownRequestError) {
+      const errorMessage = error.code === 'P1001' ? 'Database connection timeout' : 'Database error';
+      return NextResponse.json({ error: errorMessage }, { status: 503 });
+    }
+    
     return NextResponse.json({ error: 'Failed to fetch experiments' }, { status: 500 });
   }
 }

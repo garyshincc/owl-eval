@@ -59,8 +59,13 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
     onGroupChange?.(group)
   }
   
+  // Defensive checks for props
+  const safeExperiments = experiments || []
+  const safeStats = stats || null
+  const safeEvaluationStatus = evaluationStatus || null
+  
   // Get unique groups from experiments
-  const uniqueGroups = Array.from(new Set(experiments.map(exp => exp.group).filter(Boolean)))
+  const uniqueGroups = Array.from(new Set(safeExperiments.map(exp => exp.group).filter(Boolean)))
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -80,12 +85,12 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
 
   // Filter experiments by selected group
   const filteredExperiments = selectedGroup
-    ? experiments.filter(exp => exp.group === selectedGroup)
-    : experiments
+    ? safeExperiments.filter(exp => exp.group === selectedGroup)
+    : safeExperiments
     
   const activeExperiments = filteredExperiments.filter(exp => exp.status === 'active').length
   const completedExperiments = filteredExperiments.filter(exp => exp.status === 'completed').length
-  const totalParticipants = filteredExperiments.reduce((sum, exp) => sum + exp._count.participants, 0)
+  const totalParticipants = filteredExperiments.reduce((sum, exp) => sum + (exp._count?.participants || 0), 0)
   
   // Use the new progress calculation that respects individual experiment configs
   const overallProgress = getOverallProgress(filteredExperiments)
@@ -217,11 +222,11 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
               </p>
             </div>
             
-            {stats && Object.keys(stats.evaluations_by_scenario).length > 0 && (
+            {safeStats && Object.keys(safeStats.evaluations_by_scenario).length > 0 && (
               <div className="pt-4 border-t">
                 <h4 className="text-sm font-medium mb-3">Evaluations by Scenario</h4>
                 <div className="space-y-2">
-                  {Object.entries(stats.evaluations_by_scenario)
+                  {Object.entries(safeStats.evaluations_by_scenario)
                     .sort(([,a], [,b]) => b - a)
                     .slice(0, 5)
                     .map(([scenario, count]) => (
@@ -257,7 +262,7 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
                 <CheckCircle2 className="h-4 w-4 text-secondary" />
                 <span className="text-sm font-medium">Completed</span>
               </div>
-              <span className="text-lg font-bold text-secondary">{evaluationStatus?.completed || 0}</span>
+              <span className="text-lg font-bold text-secondary">{safeEvaluationStatus?.completed || 0}</span>
             </div>
             
             <div className="flex items-center justify-between p-3 bg-primary/10 border border-primary/20 rounded-lg">
@@ -265,7 +270,7 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
                 <Clock className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">Active</span>
               </div>
-              <span className="text-lg font-bold text-primary">{evaluationStatus?.active || 0}</span>
+              <span className="text-lg font-bold text-primary">{safeEvaluationStatus?.active || 0}</span>
             </div>
             
             <div className="flex items-center justify-between p-3 bg-accent/10 border border-accent/20 rounded-lg">
@@ -274,7 +279,7 @@ export function StatsDashboard({ stats, experiments, evaluationStatus, loading, 
                 <span className="text-sm font-medium">Draft</span>
               </div>
               <span className="text-lg font-bold text-accent">
-                {evaluationStatus?.draft || 0}
+                {safeEvaluationStatus?.draft || 0}
               </span>
             </div>
           </CardContent>

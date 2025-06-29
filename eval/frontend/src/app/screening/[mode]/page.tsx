@@ -40,7 +40,7 @@ export default function ScreeningModePage() {
     }
     
     // Get participant info from session storage
-    const prolificId = sessionStorage.getItem('prolific_id')
+    const prolificId = sessionStorage.getItem('prolific_pid') // Fixed: was prolific_id, should be prolific_pid
     const sessionId = sessionStorage.getItem('session_id')
     const isProlific = sessionStorage.getItem('is_prolific')
     

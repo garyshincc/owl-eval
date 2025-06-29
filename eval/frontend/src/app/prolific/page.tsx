@@ -17,6 +17,7 @@ export default function ProlificEntryPage() {
       const prolificPid = searchParams.get('PROLIFIC_PID')
       const studyId = searchParams.get('STUDY_ID')
       const sessionId = searchParams.get('SESSION_ID')
+      const isDryRun = searchParams.get('dry_run') === 'true'
 
       if (!prolificPid || !studyId || !sessionId) {
         toast({
@@ -37,7 +38,8 @@ export default function ProlificEntryPage() {
           body: JSON.stringify({
             prolificPid,
             studyId,
-            sessionId
+            sessionId,
+            isDryRun
           })
         })
 

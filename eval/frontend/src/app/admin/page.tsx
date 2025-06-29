@@ -143,21 +143,36 @@ export default function AdminPage() {
         fetch('/api/two-video-comparison-progress')
       ])
       
+      // Check for successful responses and handle errors gracefully
       const [statsData, evalStatusData, perfData, expData, progressData] = await Promise.all([
-        statsRes.json(),
-        evalStatusRes.json(),
-        perfRes.json(),
-        expRes.json(),
-        progressRes.json()
+        statsRes.ok ? statsRes.json() : null,
+        evalStatusRes.ok ? evalStatusRes.json() : null,
+        perfRes.ok ? perfRes.json() : null,
+        expRes.ok ? expRes.json() : [],
+        progressRes.ok ? progressRes.json() : []
       ])
       
       setStats(statsData)
       setEvaluationStatus(evalStatusData)
-      setPerformance(perfData || [])
-      setExperiments(expData || [])
-      setComparisonProgress(progressData || [])
+      setPerformance(Array.isArray(perfData) ? perfData : [])
+      setExperiments(Array.isArray(expData) ? expData : [])
+      setComparisonProgress(Array.isArray(progressData) ? progressData : [])
+      
+      // Log any failed requests
+      if (!statsRes.ok) console.warn('Failed to fetch stats:', statsRes.status)
+      if (!evalStatusRes.ok) console.warn('Failed to fetch evaluation status:', evalStatusRes.status)
+      if (!perfRes.ok) console.warn('Failed to fetch performance data:', perfRes.status)
+      if (!expRes.ok) console.warn('Failed to fetch experiments:', expRes.status)
+      if (!progressRes.ok) console.warn('Failed to fetch progress data:', progressRes.status)
+      
     } catch (error) {
       console.error('Error fetching data:', error)
+      // Set safe defaults to prevent UI crashes
+      setStats(null)
+      setEvaluationStatus(null)
+      setPerformance([])
+      setExperiments([])
+      setComparisonProgress([])
       showApiError()
     } finally {
       setLoading(false)
