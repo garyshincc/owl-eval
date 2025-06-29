@@ -78,14 +78,15 @@ export async function POST(request: Request) {
         try {
           await withDatabaseRetry(() =>
             prisma.participant.create({
-            data: {
-              id: actualParticipantId,
-              prolificId: uniqueProlificId,
-              experimentId: actualExperimentId,
-              sessionId: sessionId,
-              status: 'active',
-              assignedTwoVideoComparisonTasks: allComparisons.map(c => c.id),
-              assignedSingleVideoEvaluationTasks: [], // Empty for comparison mode
+              data: {
+                id: actualParticipantId,
+                prolificId: uniqueProlificId,
+                experimentId: actualExperimentId,
+                sessionId: sessionId,
+                status: 'active',
+                assignedTwoVideoComparisonTasks: allComparisons.map(c => c.id),
+                assignedSingleVideoEvaluationTasks: [], // Empty for comparison mode
+              }
             })
           );
         } catch (error) {

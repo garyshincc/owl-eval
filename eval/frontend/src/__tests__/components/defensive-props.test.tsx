@@ -165,15 +165,15 @@ describe('Defensive Props Handling', () => {
 
 describe('Array Safety Utilities', () => {
   // Test utility functions for safe array operations
-  const safeMap = <T, U>(array: T[] | null | undefined, mapper: (item: T) => U): U[] => {
+  const safeMap = <T, U,>(array: T[] | null | undefined, mapper: (item: T) => U): U[] => {
     return (array || []).map(mapper)
   }
 
-  const safeFilter = <T>(array: T[] | null | undefined, predicate: (item: T) => boolean): T[] => {
+  const safeFilter = <T,>(array: T[] | null | undefined, predicate: (item: T) => boolean): T[] => {
     return (array || []).filter(predicate)
   }
 
-  const safeReduce = <T, U>(array: T[] | null | undefined, reducer: (acc: U, item: T) => U, initial: U): U => {
+  const safeReduce = <T, U,>(array: T[] | null | undefined, reducer: (acc: U, item: T) => U, initial: U): U => {
     return (array || []).reduce(reducer, initial)
   }
 
