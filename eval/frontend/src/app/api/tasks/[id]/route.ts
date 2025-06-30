@@ -28,8 +28,8 @@ export async function GET(
         comparison_id: comparisonTask.id,
         scenario_id: comparisonTask.scenarioId,
         scenario_metadata: {
-          name: comparisonTask.metadata?.scenario?.name || comparisonTask.scenarioId,
-          description: comparisonTask.metadata?.scenario?.description || ''
+          name: (comparisonTask.metadata as any)?.scenario?.name || comparisonTask.scenarioId,
+          description: (comparisonTask.metadata as any)?.scenario?.description || ''
         },
         model_a_video_path: comparisonTask.videoAPath,
         model_b_video_path: comparisonTask.videoBPath,
