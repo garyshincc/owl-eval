@@ -29,8 +29,12 @@ import { DemographicsDashboard } from '@/components/admin/demographics-dashboard
 import { Breadcrumbs } from '@/components/navigation'
 
 interface EvaluationStats {
-  total_comparisons: number
-  total_evaluations: number
+  total_tasks: number
+  total_submissions: number
+  total_comparison_tasks: number
+  total_single_video_tasks: number
+  total_comparison_submissions: number
+  total_single_video_submissions: number
   evaluations_by_scenario: Record<string, number>
   target_evaluations_per_comparison: number
 }
@@ -60,6 +64,7 @@ interface Experiment {
   archivedAt: string | null
   group: string | null
   prolificStudyId: string | null
+  evaluationMode: string
   config: any
   createdAt: string
   updatedAt: string
@@ -67,9 +72,11 @@ interface Experiment {
   completedAt: string | null
   comparisons?: Array<any>
   _count: {
-    comparisons: number
+    twoVideoComparisonTasks: number
+    singleVideoEvaluationTasks: number
     participants: number
-    evaluations: number
+    twoVideoComparisonSubmissions: number
+    singleVideoEvaluationSubmissions: number
   }
 }
 
@@ -129,28 +136,43 @@ export default function AdminPage() {
     try {
       const groupParam = selectedGroup ? `?group=${encodeURIComponent(selectedGroup)}` : ''
       const [statsRes, evalStatusRes, perfRes, expRes, progressRes] = await Promise.all([
-        fetch(`/api/evaluation-stats${groupParam}`),
-        fetch('/api/evaluation-status'),
+        fetch(`/api/submission-stats${groupParam}`),
+        fetch('/api/submission-status'),
         fetch(`/api/model-performance${groupParam}`),
         fetch('/api/experiments'),
-        fetch('/api/comparison-progress')
+        fetch('/api/two-video-comparison-progress')
       ])
       
+      // Check for successful responses and handle errors gracefully
       const [statsData, evalStatusData, perfData, expData, progressData] = await Promise.all([
-        statsRes.json(),
-        evalStatusRes.json(),
-        perfRes.json(),
-        expRes.json(),
-        progressRes.json()
+        statsRes.ok ? statsRes.json() : null,
+        evalStatusRes.ok ? evalStatusRes.json() : null,
+        perfRes.ok ? perfRes.json() : null,
+        expRes.ok ? expRes.json() : [],
+        progressRes.ok ? progressRes.json() : []
       ])
       
       setStats(statsData)
       setEvaluationStatus(evalStatusData)
-      setPerformance(perfData || [])
-      setExperiments(expData || [])
-      setComparisonProgress(progressData || [])
+      setPerformance(Array.isArray(perfData) ? perfData : [])
+      setExperiments(Array.isArray(expData) ? expData : [])
+      setComparisonProgress(Array.isArray(progressData) ? progressData : [])
+      
+      // Log any failed requests
+      if (!statsRes.ok) console.warn('Failed to fetch stats:', statsRes.status)
+      if (!evalStatusRes.ok) console.warn('Failed to fetch evaluation status:', evalStatusRes.status)
+      if (!perfRes.ok) console.warn('Failed to fetch performance data:', perfRes.status)
+      if (!expRes.ok) console.warn('Failed to fetch experiments:', expRes.status)
+      if (!progressRes.ok) console.warn('Failed to fetch progress data:', progressRes.status)
+      
     } catch (error) {
       console.error('Error fetching data:', error)
+      // Set safe defaults to prevent UI crashes
+      setStats(null)
+      setEvaluationStatus(null)
+      setPerformance([])
+      setExperiments([])
+      setComparisonProgress([])
       showApiError()
     } finally {
       setLoading(false)

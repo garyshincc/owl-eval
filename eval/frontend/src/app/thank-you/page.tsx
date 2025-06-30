@@ -22,7 +22,7 @@ export default function ThankYouPage() {
   const handleProlificComplete = () => {
     // Redirect to Prolific with completion code
     if (completionCode) {
-      window.location.href = `https://app.prolific.co/submissions/complete?cc=${completionCode}`
+      window.location.href = `https://app.prolific.com/submissions/complete?cc=${completionCode}`
     }
   }
 

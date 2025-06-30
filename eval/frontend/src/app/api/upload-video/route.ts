@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     
     // Update comparison with video URL
     const updateField = modelLabel === 'modelA' ? 'videoAPath' : 'videoBPath'
-    await prisma.comparison.update({
+    await prisma.twoVideoComparisonTask.update({
       where: { id: comparisonId },
       data: { [updateField]: videoUrl }
     })

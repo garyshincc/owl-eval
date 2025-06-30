@@ -4,17 +4,33 @@ import { Prisma } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
   try {
-    const { filters, selectedExperiment } = await request.json()
+    const { filters, selectedExperiment, includeAnonymous } = await request.json()
     
-    // First, get participants that match the demographic filters (excluding anonymous)
-    const participants = await prisma.participant.findMany({
-      where: {
-        id: {
-          not: {
-            startsWith: 'anon-session-'
+    // Build where clause based on whether to include anonymous participants
+    const whereClause = includeAnonymous ? {
+      status: {
+        not: 'returned'  // Always exclude returned participants
+      }
+    } : {
+      AND: [
+        {
+          id: {
+            not: {
+              startsWith: 'anon-session-'
+            }
+          }
+        },
+        {
+          status: {
+            not: 'returned'  // Always exclude returned participants
           }
         }
-      },
+      ]
+    }
+    
+    // First, get participants that match the demographic filters
+    const participants = await prisma.participant.findMany({
+      where: whereClause,
       include: {
         experiment: {
           select: {
@@ -77,19 +93,35 @@ export async function POST(request: NextRequest) {
     // Get the experiment IDs from filtered participants
     const filteredExperimentIds = Array.from(new Set(finalFilteredParticipants.map(p => p.experimentId)))
     
-    if (filteredExperimentIds.length === 0) {
+    // Only return early if no participants AND no specific experiment selected
+    if (filteredExperimentIds.length === 0 && !selectedExperiment) {
       return NextResponse.json([])
     }
 
     // Get experiment details to determine evaluation modes
-    const experimentIds = Array.from(new Set(finalFilteredParticipants.map(p => p.experimentId)))
-    const experiments = await prisma.experiment.findMany({
-      where: { id: { in: experimentIds } }
-    })
+    let experiments: any[] = []
+    let evaluationModes: string[] = []
     
-    const evaluationModes = Array.from(new Set(
-      experiments.map(exp => (exp as any).evaluationMode || 'comparison')
-    ))
+    if (selectedExperiment) {
+      // If a specific experiment is selected, get that experiment directly
+      const specificExperiment = await prisma.experiment.findUnique({
+        where: { id: selectedExperiment }
+      })
+      
+      if (specificExperiment) {
+        experiments = [specificExperiment]
+        evaluationModes = [(specificExperiment as any).evaluationMode || 'comparison']
+      }
+    } else {
+      // Otherwise get experiments from filtered participants
+      const experimentIds = Array.from(new Set(finalFilteredParticipants.map(p => p.experimentId)))
+      experiments = await prisma.experiment.findMany({
+        where: { id: { in: experimentIds } }
+      })
+      evaluationModes = Array.from(new Set(
+        experiments.map(exp => (exp as any).evaluationMode || 'comparison')
+      ))
+    }
 
     const performance = []
 
@@ -104,8 +136,8 @@ export async function POST(request: NextRequest) {
       }
 
       if (selectedExperiment) {
-        // If specific experiment selected, filter by experiment through comparison
-        evaluationWhere.comparison = {
+        // If specific experiment selected, filter by experiment through twoVideoComparisonTask
+        evaluationWhere.twoVideoComparisonTask = {
           experimentId: selectedExperiment
         }
       } else {
@@ -113,10 +145,10 @@ export async function POST(request: NextRequest) {
         evaluationWhere.participantId = { in: finalFilteredParticipants.map(p => p.id) }
       }
 
-      const comparisonEvaluations = await prisma.evaluation.findMany({
+      const comparisonEvaluations = await prisma.twoVideoComparisonSubmission.findMany({
         where: evaluationWhere,
         include: {
-          comparison: {
+          twoVideoComparisonTask: {
             select: {
               modelA: true,
               modelB: true,
@@ -128,6 +160,7 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               experimentId: true,
+              status: true,
               metadata: true
             }
           }
@@ -151,11 +184,21 @@ export async function POST(request: NextRequest) {
       for (const evaluation of comparisonEvaluations) {
         // If we queried by experiment directly, we need to apply demographic filters here
         if (selectedExperiment && evaluation.participant) {
+          // Check for anonymous participants first
+          if (!includeAnonymous && evaluation.participant.id.startsWith('anon-session-')) {
+            continue
+          }
+          
+          // Check for returned participants - they should be excluded from counts
+          if (evaluation.participant.status === 'returned') {
+            continue
+          }
+          
           const participantMetadata = evaluation.participant.metadata as any
           const demographics = participantMetadata?.demographics
           
           // Apply demographic filters
-          if (demographics) {
+          if (demographics && demographics.sex !== 'CONSENT_REVOKED') {
             // Age filter
             if (demographics.age && (demographics.age < filters.ageMin || demographics.age > filters.ageMax)) {
               continue
@@ -169,13 +212,13 @@ export async function POST(request: NextRequest) {
               continue
             }
           } else if (filters.sex !== 'all' || filters.country !== 'all') {
-            // If demographic filters are set but participant has no demographics, skip
+            // If demographic filters are set but participant has no demographics or revoked consent, skip
             continue
           }
         }
 
-        const modelA = evaluation.comparison.modelA
-        const modelB = evaluation.comparison.modelB
+        const modelA = evaluation.twoVideoComparisonTask.modelA
+        const modelB = evaluation.twoVideoComparisonTask.modelB
         const clientMetadata = evaluation.clientMetadata as any
 
         if (!clientMetadata || typeof clientMetadata !== 'object') continue
@@ -188,7 +231,7 @@ export async function POST(request: NextRequest) {
           if (typeof score !== 'string') continue
           
           // Use comparison.experimentId instead of evaluation.experimentId
-          const experimentId = evaluation.comparison.experimentId
+          const experimentId = evaluation.twoVideoComparisonTask.experimentId
           const dimensionKey = `${dimension}_${experimentId}`
           
           if (!comparisonStatsMap[dimensionKey]) {
@@ -253,7 +296,7 @@ export async function POST(request: NextRequest) {
             dimension: dimension,
             scenario: undefined,
             win_rate: modelAWinRate,
-            num_evaluations: stats.total,
+            num_twoVideoComparisonSubmissions: stats.total,
             experimentId: stats.experimentId,
             evaluationType: 'comparison',
             detailed_scores: {
@@ -271,7 +314,7 @@ export async function POST(request: NextRequest) {
             dimension: dimension,
             scenario: undefined,
             win_rate: modelBWinRate,
-            num_evaluations: stats.total,
+            num_twoVideoComparisonSubmissions: stats.total,
             experimentId: stats.experimentId,
             evaluationType: 'comparison',
             detailed_scores: {
@@ -290,21 +333,25 @@ export async function POST(request: NextRequest) {
     if (evaluationModes.includes('single_video')) {
       // Build single video evaluation query
       let singleVideoWhere: any = {
-        status: 'completed'
+        status: 'completed',
+        dimensionScores: { not: null }
       }
 
       if (selectedExperiment) {
-        // If specific experiment selected, filter by experiment directly
-        singleVideoWhere.experimentId = selectedExperiment
+        // If specific experiment selected, filter by experiment through singleVideoEvaluationTask
+        singleVideoWhere.singleVideoEvaluationTask = {
+          experimentId: selectedExperiment
+        }
+        // Don't pre-filter by participant when using selectedExperiment - we'll filter manually later
       } else {
         // Otherwise filter by participant IDs as before
         singleVideoWhere.participantId = { in: finalFilteredParticipants.map(p => p.id) }
       }
 
-      const singleVideoEvaluations = await (prisma as any).singleVideoEvaluation.findMany({
+      const singleVideoEvaluations = await prisma.singleVideoEvaluationSubmission.findMany({
         where: singleVideoWhere,
         include: {
-          videoTask: {
+          singleVideoEvaluationTask: {
             select: {
               modelName: true,
               scenarioId: true
@@ -314,12 +361,12 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               experimentId: true,
+              status: true,
               metadata: true
             }
           } : undefined
         }
       })
-
 
       // Process single video evaluations
       const singleVideoStatsMap: Record<string, {
@@ -333,11 +380,21 @@ export async function POST(request: NextRequest) {
       for (const evaluation of singleVideoEvaluations) {
         // If we queried by experiment directly, we need to apply demographic filters here
         if (selectedExperiment && evaluation.participant) {
+          // Check for anonymous participants first
+          if (!includeAnonymous && evaluation.participant.id.startsWith('anon-session-')) {
+            continue
+          }
+          
+          // Check for returned participants - they should be excluded from counts
+          if (evaluation.participant.status === 'returned') {
+            continue
+          }
+          
           const participantMetadata = evaluation.participant.metadata as any
           const demographics = participantMetadata?.demographics
           
           // Apply demographic filters
-          if (demographics) {
+          if (demographics && demographics.sex !== 'CONSENT_REVOKED') {
             // Age filter
             if (demographics.age && (demographics.age < filters.ageMin || demographics.age > filters.ageMax)) {
               continue
@@ -350,13 +407,13 @@ export async function POST(request: NextRequest) {
             if (filters.country !== 'all' && demographics.country_of_residence !== filters.country) {
               continue
             }
-          } else if (filters.sex !== 'all' || filters.country !== 'all' || demographics?.age) {
-            // If demographic filters are set but participant has no demographics, skip
+          } else if (filters.sex !== 'all' || filters.country !== 'all') {
+            // If demographic filters are set but participant has no demographics or revoked consent, skip
             continue
           }
         }
 
-        const modelName = evaluation.videoTask.modelName
+        const modelName = evaluation.singleVideoEvaluationTask.modelName
         const dimensionScores = evaluation.dimensionScores as any
 
         if (!dimensionScores || typeof dimensionScores !== 'object') continue
@@ -401,7 +458,7 @@ export async function POST(request: NextRequest) {
             scenario: undefined,
             win_rate: qualityRate, // For single video, "win rate" = proportion of high scores
             quality_score: averageScore, // Average 1-5 rating
-            num_evaluations: stats.count,
+            num_singleVideoEvaluationSubmissions: stats.count,
             experimentId: stats.experimentId,
             evaluationType: 'single_video',
             score_distribution: {

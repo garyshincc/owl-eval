@@ -1,5 +1,6 @@
 import { prisma } from '../prisma';
 import Papa from 'papaparse';
+import { shouldUpdateExperimentStatus, ExperimentStatus } from '../utils/status';
 
 const PROLIFIC_API_URL = 'https://api.prolific.com';
 const PROLIFIC_API_TOKEN = process.env.PROLIFIC_API_TOKEN;
@@ -114,7 +115,10 @@ export class ProlificService {
       where: { id: request.experimentId },
       include: {
         _count: {
-          select: { comparisons: true }
+          select: { 
+            twoVideoComparisonTasks: true,
+            singleVideoEvaluationTasks: true
+          }
         }
       }
     });
@@ -134,11 +138,69 @@ export class ProlificService {
       appUrl = appUrl.replace('http://', 'https://');
     }
 
-    // Calculate estimated time
-    const estimatedCompletionTime = Math.ceil(experiment._count.comparisons * 2);
+    // Calculate estimated time based on evaluation mode
+    let estimatedCompletionTime: number;
+    if (experiment.evaluationMode === 'single_video') {
+      // For single video: estimate 1 minute per video task
+      const videoTaskCount = experiment._count.singleVideoEvaluationTasks || 1;
+      estimatedCompletionTime = Math.max(1, Math.ceil(videoTaskCount * 1));
+    } else {
+      // For comparison: estimate 2 minutes per comparison
+      estimatedCompletionTime = Math.max(1, Math.ceil(experiment._count.twoVideoComparisonTasks * 2));
+    }
     const studyCompletionCode = generateCompletionCode();
 
+    // Use unified URL format for both comparison and single video evaluations
     const externalStudyUrl = `${appUrl}/prolific?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_ID%}}&STUDY_ID={{%STUDY_ID%}}&experiment_id=${request.experimentId}`;
+
+    // Get demographics from experiment config
+    const demographics = (experiment.config as any)?.demographics;
+    
+    // Build Prolific filters based on demographics
+    const filters: any[] = [
+      {
+        filter_id: "approval_rate",
+        selected_range: {
+          lower: demographics?.approvalRate || 95,
+          upper: 100
+        }
+      }
+    ];
+
+    // Add age filter if specified
+    if (demographics?.ageMin || demographics?.ageMax) {
+      filters.push({
+        filter_id: "age",
+        selected_range: {
+          lower: demographics.ageMin || 18,
+          upper: demographics.ageMax || 100
+        }
+      });
+    }
+
+    // Add gender filter if specified
+    if (demographics?.gender && demographics.gender.length > 0) {
+      filters.push({
+        filter_id: "sex",
+        selected_values: demographics.gender
+      });
+    }
+
+    // Add country filter if specified
+    if (demographics?.country && demographics.country.length > 0) {
+      filters.push({
+        filter_id: "country_of_residence",
+        selected_values: demographics.country
+      });
+    }
+
+    // Add language filter if specified
+    if (demographics?.language && demographics.language.length > 0) {
+      filters.push({
+        filter_id: "fluent_languages",
+        selected_values: demographics.language
+      });
+    }
 
     const studyData = {
       name: request.title,
@@ -159,15 +221,7 @@ export class ProlificService {
       ],
       device_compatibility: ["desktop"],
       peripheral_requirements: ["audio"],
-      filters: [
-        {
-          filter_id: "approval_rate",
-          selected_range: {
-            lower: 95,
-            upper: 100
-          }
-        }
-      ]
+      filters: filters
     };
 
     const prolificStudy = await this.makeRequest<ProlificStudy>('/api/v1/studies/', {
@@ -404,7 +458,7 @@ export class ProlificService {
               sessionId: `prolific_${submission['Participant id']}_${Date.now()}`,
               experimentId: experiment.id,
               status: submission['Status'].toLowerCase(),
-              assignedComparisons: [],
+              assignedTwoVideoComparisonTasks: [],
               metadata: {
                 demographics: participantInfo || null,
                 prolificSubmissionId: submission['Submission id'],
@@ -451,8 +505,13 @@ export class ProlificService {
       }
     }
 
-    // Auto-update experiment status based on Prolific study status
-    let experimentStatus = experiment.status;
+    // Auto-update experiment status based on Prolific study status using smart status management
+    const statusUpdate = shouldUpdateExperimentStatus(
+      experiment.status,
+      study.status,
+      !!experiment.startedAt
+    );
+
     let statusData: any = {
       config: {
         ...experiment.config as object,
@@ -460,52 +519,30 @@ export class ProlificService {
       }
     };
 
-    switch (study.status) {
-      case 'UNPUBLISHED':
-      case 'DRAFT':
-        // If study exists but is unpublished, keep it as draft only if it was never published
-        // If it was previously active but now unpublished, that's unusual - keep current status
-        if (experiment.status === 'draft') {
-          experimentStatus = 'draft';
-        }
-        break;
-      case 'ACTIVE':
-      case 'RUNNING':
-        experimentStatus = 'active';
-        if (!experiment.startedAt) {
-          statusData.startedAt = new Date();
-        }
-        break;
-      case 'PAUSED':
-        experimentStatus = 'paused';
-        break;
-      case 'COMPLETED':
-        experimentStatus = 'completed';
+    if (statusUpdate.shouldUpdate) {
+      statusData.status = statusUpdate.newStatus;
+      
+      // Set timestamps based on new status
+      if (statusUpdate.newStatus === ExperimentStatus.ACTIVE && !experiment.startedAt) {
+        statusData.startedAt = new Date();
+      } else if (statusUpdate.newStatus === ExperimentStatus.COMPLETED && !experiment.completedAt) {
         statusData.completedAt = new Date();
-        break;
-      case 'STOPPED':
-        experimentStatus = 'paused';
-        break;
-      default:
-        // Keep current status for unknown Prolific statuses
-        console.log(`Unknown Prolific status: ${study.status}, keeping experiment status as ${experiment.status}`);
-        break;
-    }
+      }
 
-    if (experimentStatus !== experiment.status) {
-      statusData.status = experimentStatus;
       await prisma.experiment.update({
         where: { id: experiment.id },
         data: statusData
       });
-      console.log(`✓ Updated experiment status from '${experiment.status}' to '${experimentStatus}' (Prolific: ${study.status})`);
+      
+      console.log(`✓ ${statusUpdate.reason}`);
     } else {
       // Still update config to track Prolific status even if experiment status doesn't change
       await prisma.experiment.update({
         where: { id: experiment.id },
         data: statusData
       });
-      console.log(`✓ Synced Prolific status '${study.status}' (experiment status unchanged)`);
+      
+      console.log(`✓ ${statusUpdate.reason}`);
     }
 
     return {
@@ -537,8 +574,8 @@ export class ProlificService {
                 }
               }
             },
-            evaluations: true,
-            comparisons: true
+            twoVideoComparisonSubmissions: true,
+            twoVideoComparisonTasks: true
           }
         }
       }

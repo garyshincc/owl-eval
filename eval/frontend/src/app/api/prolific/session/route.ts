@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/auth-middleware';
 import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { prolificPid, studyId, sessionId } = body
+    let { prolificPid, studyId, sessionId, isDryRun } = body
+    
+    // For dry run mode, make prolificId and sessionId unique per experiment to avoid conflicts
+    // Keep them as valid 24-char hex by using a hash approach
+    if (isDryRun && process.env.NODE_ENV === 'development') {
+      const prolificHash = require('crypto').createHash('md5').update(prolificPid + studyId).digest('hex')
+      const sessionHash = require('crypto').createHash('md5').update(sessionId + studyId).digest('hex')
+      prolificPid = prolificHash.substring(0, 24)
+      sessionId = sessionHash.substring(0, 24)
+    }
 
     // Validate required parameters
     if (!prolificPid || !studyId || !sessionId) {
@@ -27,7 +35,10 @@ export async function POST(request: NextRequest) {
     // Find the experiment by Prolific study ID
     const experiment = await prisma.experiment.findUnique({
       where: { prolificStudyId: studyId },
-      include: { comparisons: true }
+      include: { 
+        twoVideoComparisonTasks: true,
+        singleVideoEvaluationTasks: true 
+      }
     })
 
     if (!experiment) {
@@ -37,15 +48,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if experiment is active
-    if (experiment.status !== 'active') {
+    // Check if experiment is active (skip check for dry runs in development only)
+    const isValidDryRun = isDryRun && process.env.NODE_ENV === 'development'
+    if (!isValidDryRun && experiment.status !== 'active') {
       return NextResponse.json(
         { error: 'Study is not active' },
         { status: 403 }
       )
     }
 
-    // Check if participant already exists for this experiment
+    // Check if participant already exists globally (prolificId is unique across all experiments)
+    let existingParticipant = await prisma.participant.findUnique({
+      where: {
+        prolificId: prolificPid
+      }
+    })
+    
+    // Check if participant exists for this specific experiment
     let participant = await prisma.participant.findFirst({
       where: {
         prolificId: prolificPid,
@@ -59,28 +78,33 @@ export async function POST(request: NextRequest) {
         where: { id: participant.id },
         data: {
           sessionId: sessionId,
+          prolificSubmissionId: sessionId, // sessionId from Prolific is actually the submission ID
           status: 'active',
           metadata: {
             ...participant.metadata as object || {},
             lastAccessed: new Date().toISOString(),
             studyId: studyId
           }
-        }
+        } as any // Cast to any to handle schema changes not yet migrated
       })
     } else {
       // Create new participant for this experiment
+      const evaluationMode = (experiment as any).evaluationMode || 'comparison'
+      
       participant = await prisma.participant.create({
         data: {
           prolificId: prolificPid,
+          prolificSubmissionId: sessionId, // sessionId from Prolific is actually the submission ID
           experimentId: experiment.id,
           sessionId: sessionId,
           status: 'active',
-          assignedComparisons: experiment.comparisons.map(c => c.id),
+          assignedTwoVideoComparisonTasks: evaluationMode === 'comparison' ? experiment.twoVideoComparisonTasks.map(c => c.id) : [],
+          assignedSingleVideoEvaluationTasks: evaluationMode === 'single_video' ? experiment.singleVideoEvaluationTasks.map(vt => vt.id) : [],
           metadata: {
             studyId: studyId,
             firstAccessed: new Date().toISOString()
           }
-        }
+        } as any // Cast to any to handle schema changes not yet migrated
       })
     }
 

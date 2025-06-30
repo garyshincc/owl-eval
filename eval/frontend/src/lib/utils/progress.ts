@@ -2,27 +2,32 @@
 
 export interface ExperimentWithCounts {
   id: string;
+  evaluationMode?: 'comparison' | 'single_video';
   config?: {
     evaluationsPerComparison?: number;
   };
   _count: {
-    comparisons: number;
-    evaluations: number;
+    twoVideoComparisonTasks: number;
+    singleVideoEvaluationTasks: number;
+    twoVideoComparisonSubmissions: number;
+    singleVideoEvaluationSubmissions: number;
   };
 }
 
 export function getProgressPercentage(experiment: ExperimentWithCounts): number {
-  if (experiment._count.comparisons === 0) return 0;
-
-  const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || -1;
-  const targetEvaluations = experiment._count.comparisons * evaluationsPerComparison;
+  const totalTasks = experiment._count.twoVideoComparisonTasks + experiment._count.singleVideoEvaluationTasks;
+  const totalSubmissions = experiment._count.twoVideoComparisonSubmissions + experiment._count.singleVideoEvaluationSubmissions;
   
-  return Math.min((experiment._count.evaluations / targetEvaluations) * 100, 100);
+  if (totalTasks === 0) return 0;
+  const evaluationsPerTask = experiment.config?.evaluationsPerComparison || -1;
+  const targetEvaluations = totalTasks * evaluationsPerTask;
+  return Math.min((totalSubmissions / targetEvaluations) * 100, 100);
 }
 
 export function getTargetEvaluations(experiment: ExperimentWithCounts): number {
-  const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || -1;
-  return experiment._count.comparisons * evaluationsPerComparison;
+  const totalTasks = experiment._count.twoVideoComparisonTasks + experiment._count.singleVideoEvaluationTasks;
+  const evaluationsPerTask = experiment.config?.evaluationsPerComparison || -1;
+  return totalTasks * evaluationsPerTask;
 }
 
 export function getOverallProgress(experiments: ExperimentWithCounts[]): {
@@ -30,7 +35,10 @@ export function getOverallProgress(experiments: ExperimentWithCounts[]): {
   totalTargetEvaluations: number;
   progressPercentage: number;
 } {
-  const totalEvaluations = experiments.reduce((sum, exp) => sum + exp._count.evaluations, 0);
+  const totalEvaluations = experiments.reduce((sum, exp) => {
+    return sum + exp._count.twoVideoComparisonSubmissions + exp._count.singleVideoEvaluationSubmissions;
+  }, 0);
+  
   const totalTargetEvaluations = experiments.reduce((sum, exp) => sum + getTargetEvaluations(exp), 0);
   
   const progressPercentage = totalTargetEvaluations > 0 

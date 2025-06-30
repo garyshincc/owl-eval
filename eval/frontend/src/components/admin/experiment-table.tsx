@@ -41,6 +41,7 @@ import {
   Upload,
   StopCircle
 } from 'lucide-react'
+import { getStatusColor, ExperimentStatus } from '@/lib/utils/status'
 
 interface Experiment {
   id: string
@@ -52,15 +53,18 @@ interface Experiment {
   archivedAt: string | null
   group: string | null
   prolificStudyId: string | null
+  evaluationMode: string
   config: any
   createdAt: string
   updatedAt: string
   startedAt: string | null
   completedAt: string | null
   _count: {
-    comparisons: number
+    twoVideoComparisonTasks: number
+    singleVideoEvaluationTasks: number
     participants: number
-    evaluations: number
+    twoVideoComparisonSubmissions: number
+    singleVideoEvaluationSubmissions: number
   }
 }
 
@@ -98,27 +102,21 @@ export function ExperimentTable({
 
   const uniqueGroups = Array.from(new Set(experiments.map(exp => exp.group).filter(Boolean)))
 
-  const getStatusColor = (status: string, archived: boolean) => {
-    if (archived) return 'bg-destructive/10 text-destructive border-destructive/20'
-    switch (status) {
-      case 'active': return 'bg-secondary/10 text-secondary border-secondary/20'
-      case 'completed': return 'bg-primary/10 text-primary border-primary/20'
-      case 'paused': return 'bg-accent/10 text-accent border-accent/20'
-      case 'draft': return 'bg-muted text-muted-foreground border-border'
-      default: return 'bg-destructive/10 text-destructive border-destructive/20'
-    }
-  }
 
   const getProgressPercentage = (exp: Experiment) => {
-    if (exp._count.comparisons === 0) return 0
-    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
-    const targetEvaluations = exp._count.comparisons * evaluationsPerComparison
-    return Math.min((exp._count.evaluations / targetEvaluations) * 100, 100)
+    const totalTasks = exp._count.twoVideoComparisonTasks + exp._count.singleVideoEvaluationTasks
+    const totalSubmissions = exp._count.twoVideoComparisonSubmissions + exp._count.singleVideoEvaluationSubmissions
+    
+    if (totalTasks === 0) return 0
+    const evaluationsPerTask = exp.config?.evaluationsPerComparison || -1
+    const targetEvaluations = totalTasks * evaluationsPerTask
+    return Math.min((totalSubmissions / targetEvaluations) * 100, 100)
   }
 
   const getTargetEvaluations = (exp: Experiment) => {
-    const evaluationsPerComparison = exp.config?.evaluationsPerComparison || -1
-    return exp._count.comparisons * evaluationsPerComparison
+    const totalTasks = exp._count.twoVideoComparisonTasks + exp._count.singleVideoEvaluationTasks
+    const evaluationsPerTask = exp.config?.evaluationsPerComparison || -1
+    return totalTasks * evaluationsPerTask
   }
 
   const formatDate = (dateString: string) => {
@@ -158,6 +156,59 @@ export function ExperimentTable({
       toast({
         title: 'Error',
         description: 'Failed to update experiment status',
+        variant: 'destructive'
+      })
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleLaunchExperiment = async (experiment: Experiment) => {
+    setActionLoading(experiment.id)
+    try {
+      // First publish the Prolific study
+      if (experiment.prolificStudyId) {
+        const prolificResponse = await fetch(`/api/prolific/studies/${experiment.prolificStudyId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'publish' }),
+        })
+
+        if (!prolificResponse.ok) {
+          const errorData = await prolificResponse.json()
+          throw new Error(errorData.error || 'Failed to publish Prolific study')
+        }
+      }
+
+      // Then update experiment status to active
+      const response = await fetch(`/api/experiments/${experiment.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'active' }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update experiment status')
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Experiment launched successfully! Prolific study is now active.',
+      })
+
+      // Refresh the experiments list
+      if (onRefresh) {
+        onRefresh()
+      }
+    } catch (error: any) {
+      console.error('Error launching experiment:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to launch experiment',
         variant: 'destructive'
       })
     } finally {
@@ -458,16 +509,19 @@ export function ExperimentTable({
               <DropdownMenuItem onClick={() => setStatusFilter('all')}>
                 All Status
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('active')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.READY)}>
+                Ready
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.ACTIVE)}>
                 Active
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('draft')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.DRAFT)}>
                 Draft
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('completed')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.COMPLETED)}>
                 Completed
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('paused')}>
+              <DropdownMenuItem onClick={() => setStatusFilter(ExperimentStatus.PAUSED)}>
                 Paused
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setStatusFilter('archived')}>
@@ -540,12 +594,14 @@ export function ExperimentTable({
                     <TableCell>
                       <div className="space-y-2 min-w-[120px]">
                         <div className="flex justify-between text-xs">
-                          <span>{exp._count.evaluations} evaluations</span>
+                          <span>
+                            {exp._count.twoVideoComparisonSubmissions + exp._count.singleVideoEvaluationSubmissions} submissions
+                          </span>
                           <span>{Math.round(getProgressPercentage(exp))}%</span>
                         </div>
                         <Progress value={getProgressPercentage(exp)} className="h-2" />
                         <div className="text-xs text-gray-500">
-                          {exp._count.evaluations}/{getTargetEvaluations(exp)} target
+                          {exp._count.twoVideoComparisonSubmissions + exp._count.singleVideoEvaluationSubmissions}/{getTargetEvaluations(exp)} target
                         </div>
                       </div>
                     </TableCell>
@@ -576,7 +632,81 @@ export function ExperimentTable({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
-                            onClick={() => window.open(`/evaluate/${exp.slug}`, '_blank')}
+                            onClick={async () => {
+                              try {
+                                console.log('Opening evaluation for experiment:', { id: exp.id, slug: exp.slug, name: exp.name, evaluationMode: exp.evaluationMode, status: exp.status })
+                                
+                                // Get the first available task for this experiment
+                                if (exp.evaluationMode === 'single_video') {
+                                  console.log('Fetching video tasks for experiment:', exp.id)
+                                  const response = await fetch(`/api/single-video-evaluation-tasks?experimentId=${exp.id}`)
+                                  console.log('Video tasks response:', response.status, response.ok)
+                                  
+                                  if (response.ok) {
+                                    const videoTasks = await response.json()
+                                    console.log('Video tasks found:', videoTasks.length, videoTasks)
+                                    
+                                    if (videoTasks.length > 0) {
+                                      const url = `/evaluate/${videoTasks[0].id}?admin=true`
+                                      console.log('Opening URL:', url)
+                                      // Create a temporary link element to ensure new tab (not popup)
+                                      const link = document.createElement('a')
+                                      link.href = url
+                                      link.target = '_blank'
+                                      link.rel = 'noopener noreferrer'
+                                      document.body.appendChild(link)
+                                      link.click()
+                                      document.body.removeChild(link)
+                                      return
+                                    }
+                                  } else {
+                                    const errorText = await response.text()
+                                    console.error('Video tasks API error:', errorText)
+                                  }
+                                } else {
+                                  console.log('Fetching comparisons for experiment:', exp.id)
+                                  const response = await fetch(`/api/two-video-comparison-tasks?experimentId=${exp.id}`)
+                                  console.log('Comparisons response:', response.status, response.ok)
+                                  
+                                  if (response.ok) {
+                                    const comparisons = await response.json()
+                                    console.log('Comparisons found:', comparisons.length, comparisons)
+                                    
+                                    if (comparisons.length > 0) {
+                                      const url = `/evaluate/${comparisons[0].comparison_id}?admin=true`
+                                      console.log('Opening URL:', url)
+                                      // Create a temporary link element to ensure new tab (not popup)
+                                      const link = document.createElement('a')
+                                      link.href = url
+                                      link.target = '_blank'
+                                      link.rel = 'noopener noreferrer'
+                                      document.body.appendChild(link)
+                                      link.click()
+                                      document.body.removeChild(link)
+                                      return
+                                    }
+                                  } else {
+                                    const errorText = await response.text()
+                                    console.error('Comparisons API error:', errorText)
+                                  }
+                                }
+                                
+                                // Fallback: no tasks available
+                                console.log('No tasks found, showing error toast')
+                                toast({
+                                  title: 'No Evaluations Available',
+                                  description: 'No evaluation tasks are currently available for this experiment',
+                                  variant: 'destructive'
+                                })
+                              } catch (error) {
+                                console.error('Error opening evaluation:', error)
+                                toast({
+                                  title: 'Error',
+                                  description: 'Failed to open evaluation',
+                                  variant: 'destructive'
+                                })
+                              }
+                            }}
                           >
                             <ExternalLink className="h-4 w-4 mr-2" />
                             Open Evaluation
@@ -595,63 +725,105 @@ export function ExperimentTable({
                             </DropdownMenuItem>
                           )}
                           
-                          {/* Experiment Lifecycle Actions */}
-                          {!exp.prolificStudyId && !exp.archived && exp.status === 'draft' && (
+                          {/* DRAFT Status: Ready or Ready+Publish options */}
+                          {exp.status === ExperimentStatus.DRAFT && !exp.archived && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => handleUpdateStatus(exp.id, ExperimentStatus.READY)}
+                                disabled={actionLoading === exp.id}
+                              >
+                                <Play className="h-4 w-4 mr-2" />
+                                Ready
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  setActionLoading(exp.id)
+                                  try {
+                                    // First make experiment ready
+                                    const response = await fetch(`/api/experiments/${exp.id}`, {
+                                      method: 'PUT',
+                                      headers: {
+                                        'Content-Type': 'application/json',
+                                      },
+                                      body: JSON.stringify({ status: ExperimentStatus.READY }),
+                                    })
+
+                                    if (!response.ok) {
+                                      throw new Error('Failed to update experiment status')
+                                    }
+
+                                    // Then upload to Prolific
+                                    if (onCreateProlificStudy) {
+                                      onCreateProlificStudy(exp.id)
+                                    }
+
+                                    // Refresh the experiments list
+                                    if (onRefresh) {
+                                      onRefresh()
+                                    }
+                                  } catch (error) {
+                                    console.error('Error in ready+publish flow:', error)
+                                    toast({
+                                      title: 'Error',
+                                      description: 'Failed to update experiment and publish to Prolific',
+                                      variant: 'destructive'
+                                    })
+                                  } finally {
+                                    setActionLoading(null)
+                                  }
+                                }}
+                                disabled={actionLoading === exp.id || !onCreateProlificStudy}
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                Ready and Publish to Prolific
+                              </DropdownMenuItem>
+                            </>
+                          )}
+
+                          {/* READY/UNPUBLISHED: Show Publish button */}
+                          {exp.status === ExperimentStatus.READY && !exp.prolificStudyId && !exp.archived && (
                             <DropdownMenuItem
                               onClick={() => onCreateProlificStudy?.(exp.id)}
                               disabled={!onCreateProlificStudy}
                             >
-                              <DollarSign className="h-4 w-4 mr-2" />
-                              Launch on Prolific
+                              <Upload className="h-4 w-4 mr-2" />
+                              Publish to Prolific
                             </DropdownMenuItem>
                           )}
 
-                          {/* Prolific Study Actions */}
-                          {exp.prolificStudyId && exp.config?.prolificStatus === 'UNPUBLISHED' && (
+                          {/* READY/PUBLISHED: Show Launch button */}
+                          {exp.status === ExperimentStatus.READY && exp.prolificStudyId && (exp.config?.prolificStatus === 'UNPUBLISHED' || exp.config?.prolificStatus === 'DRAFT') && !exp.archived && (
                             <DropdownMenuItem
                               onClick={() => handleProlificAction(exp, 'publish')}
                               disabled={actionLoading === exp.id}
                             >
-                              <Upload className="h-4 w-4 mr-2" />
-                              Publish on Prolific
+                              <DollarSign className="h-4 w-4 mr-2" />
+                              Launch
                             </DropdownMenuItem>
                           )}
 
-                          {/* Experiment Control Actions - Only available after Prolific is published */}
-                          {exp.prolificStudyId && exp.config?.prolificStatus === 'ACTIVE' && (
-                            <>
-                              {exp.status === 'draft' && (
-                                <DropdownMenuItem
-                                  onClick={() => handleUpdateStatus(exp.id, 'active')}
-                                  disabled={actionLoading === exp.id}
-                                >
-                                  <Play className="h-4 w-4 mr-2" />
-                                  Start Experiment
-                                </DropdownMenuItem>
-                              )}
-                              {exp.status === 'active' && (
-                                <DropdownMenuItem
-                                  onClick={() => handleUpdateStatus(exp.id, 'paused')}
-                                  disabled={actionLoading === exp.id}
-                                >
-                                  <Pause className="h-4 w-4 mr-2" />
-                                  Pause Experiment
-                                </DropdownMenuItem>
-                              )}
-                              {exp.status === 'paused' && (
-                                <DropdownMenuItem
-                                  onClick={() => handleUpdateStatus(exp.id, 'active')}
-                                  disabled={actionLoading === exp.id}
-                                >
-                                  <Play className="h-4 w-4 mr-2" />
-                                  Resume Experiment
-                                </DropdownMenuItem>
-                              )}
-                            </>
+                          {/* Step 3: Active, Published -> Pause/Resume Experiment */}
+                          {exp.prolificStudyId && exp.status === 'active' && (
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateStatus(exp.id, 'paused')}
+                              disabled={actionLoading === exp.id}
+                            >
+                              <Pause className="h-4 w-4 mr-2" />
+                              Pause Experiment
+                            </DropdownMenuItem>
+                          )}
+                          {exp.prolificStudyId && exp.status === 'paused' && (
+                            <DropdownMenuItem
+                              onClick={() => handleUpdateStatus(exp.id, 'active')}
+                              disabled={actionLoading === exp.id}
+                            >
+                              <Play className="h-4 w-4 mr-2" />
+                              Resume Experiment
+                            </DropdownMenuItem>
                           )}
 
                           {/* Prolific Management Actions */}
-                          {exp.prolificStudyId && exp.config?.prolificStatus === 'ACTIVE' && (
+                          {exp.prolificStudyId && (exp.config?.prolificStatus === 'ACTIVE' || exp.config?.prolificStatus === 'RUNNING') && (
                             <DropdownMenuItem
                               onClick={() => handleProlificAction(exp, 'pause')}
                               disabled={actionLoading === exp.id}
@@ -669,7 +841,7 @@ export function ExperimentTable({
                               Resume Prolific Study
                             </DropdownMenuItem>
                           )}
-                          {exp.prolificStudyId && (exp.config?.prolificStatus === 'ACTIVE' || exp.config?.prolificStatus === 'PAUSED') && (
+                          {exp.prolificStudyId && (exp.config?.prolificStatus === 'ACTIVE' || exp.config?.prolificStatus === 'RUNNING' || exp.config?.prolificStatus === 'PAUSED') && (
                             <DropdownMenuItem
                               onClick={() => handleProlificAction(exp, 'stop')}
                               disabled={actionLoading === exp.id}

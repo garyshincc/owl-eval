@@ -23,7 +23,11 @@ interface ProlificDialogProps {
     id: string
     name: string
     _count?: {
-      comparisons: number
+      twoVideoComparisonTasks: number
+      singleVideoEvaluationTasks: number
+      participants: number
+      twoVideoComparisonSubmissions: number
+      singleVideoEvaluationSubmissions: number
     }
   } | null
   onSuccess?: () => void
@@ -103,8 +107,10 @@ export function ProlificDialog({
 
   if (!experiment) return null
 
-  const comparisonsCount = experiment._count?.comparisons || 0
-  const estimatedTime = Math.ceil(comparisonsCount * 2) // 2 minutes per comparison
+  const twoVideoTasksCount = experiment._count?.twoVideoComparisonTasks || 0
+  const singleVideoTasksCount = experiment._count?.singleVideoEvaluationTasks || 0
+  const totalTasksCount = twoVideoTasksCount + singleVideoTasksCount
+  const estimatedTime = Math.ceil(twoVideoTasksCount * 2 + singleVideoTasksCount * 1) // 2 min per comparison, 1 min per single video
   const totalCost = form.reward * form.totalParticipants
 
   return (
@@ -166,8 +172,8 @@ export function ProlificDialog({
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-blue-900">Comparisons:</span>
-              <span className="font-medium">{comparisonsCount}</span>
+              <span className="text-blue-900">Total Tasks:</span>
+              <span className="font-medium">{totalTasksCount}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-blue-900">Estimated time:</span>

@@ -17,6 +17,7 @@ export default function ProlificEntryPage() {
       const prolificPid = searchParams.get('PROLIFIC_PID')
       const studyId = searchParams.get('STUDY_ID')
       const sessionId = searchParams.get('SESSION_ID')
+      const isDryRun = searchParams.get('dry_run') === 'true'
 
       if (!prolificPid || !studyId || !sessionId) {
         toast({
@@ -37,7 +38,8 @@ export default function ProlificEntryPage() {
           body: JSON.stringify({
             prolificPid,
             studyId,
-            sessionId
+            sessionId,
+            isDryRun
           })
         })
 
@@ -55,8 +57,8 @@ export default function ProlificEntryPage() {
         sessionStorage.setItem('participant_id', data.participantId)
         sessionStorage.setItem('experiment_id', data.experimentId)
 
-        // Redirect to the main study page
-        router.push('/')
+        // Redirect to screening page first
+        router.push('/screening')
       } catch (error) {
         console.error('Error initializing Prolific session:', error)
         toast({

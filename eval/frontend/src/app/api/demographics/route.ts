@@ -3,15 +3,34 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    // Fetch participants with their demographics and experiment data (excluding anonymous)
-    const participants = await prisma.participant.findMany({
-      where: {
-        id: {
-          not: {
-            startsWith: 'anon-session-'
+    const { searchParams } = new URL(request.url)
+    const includeAnonymous = searchParams.get('includeAnonymous') === 'true'
+    
+    // Build where clause based on whether to include anonymous participants
+    const whereClause = includeAnonymous ? {
+      status: {
+        not: 'returned'  // Always exclude returned participants
+      }
+    } : {
+      AND: [
+        {
+          id: {
+            not: {
+              startsWith: 'anon-session-'
+            }
+          }
+        },
+        {
+          status: {
+            not: 'returned'  // Always exclude returned participants
           }
         }
-      },
+      ]
+    }
+    
+    // Fetch participants with their demographics and experiment data
+    const participants = await prisma.participant.findMany({
+      where: whereClause,
       include: {
         experiment: {
           select: {
@@ -79,13 +98,13 @@ export async function GET(request: NextRequest) {
     // We'll need to get the evaluation count from the experiment config or database
     const experiment = await prisma.experiment.findFirst({
       where: { participants: { some: { id: { in: participants.map(p => p.id) } } } },
-      include: { _count: { select: { comparisons: true } } }
+      include: { _count: { select: { twoVideoComparisonTasks: true } } }
     })
     
     let averageDollarPerEvaluation = undefined
     if (experiment && participantsWithPaymentData.length > 0) {
       // Assuming each participant evaluates all comparisons
-      const evaluationsPerParticipant = experiment._count.comparisons
+      const evaluationsPerParticipant = experiment._count.twoVideoComparisonTasks
       if (evaluationsPerParticipant > 0) {
         const dollarsPerEvaluation = participantsWithPaymentData.map(p => {
           const totalPaymentCents = p.submission!.totalPayment!

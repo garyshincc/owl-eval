@@ -57,8 +57,12 @@ export interface DimensionInfo {
 }
 
 export interface EvaluationStats {
-  total_comparisons: number
-  total_evaluations: number
+  total_tasks: number
+  total_submissions: number
+  total_comparison_tasks: number
+  total_single_video_tasks: number
+  total_comparison_submissions: number
+  total_single_video_submissions: number
   evaluations_by_scenario: Record<string, number>
   target_evaluations_per_comparison: number
 }

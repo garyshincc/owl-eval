@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
         }
       }))
       
-      await tx.comparison.createMany({
+      await tx.twoVideoComparisonTask.createMany({
         data: comparisonData
       })
       
