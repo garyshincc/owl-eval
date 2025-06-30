@@ -43,14 +43,16 @@ interface Comparison {
 }
 
 interface VideoTask {
-  video_task_id: string
-  scenario_id: string
-  scenario_metadata: {
+  id: string
+  scenarioId: string
+  modelName: string
+  videoPath: string
+  metadata?: any
+  experiment: {
+    id: string
     name: string
-    description: string
+    config: any
   }
-  model_name: string
-  video_path: string
 }
 
 interface DimensionInfo {
@@ -155,30 +157,43 @@ export default function EvaluatePage() {
 
   const fetchComparison = useCallback(async () => {
     try {
-      // First try to fetch as comparison ID
-      let response = await fetch(`/api/two-video-comparison-tasks/${params.id}`)
+      // Use unified task endpoint to determine task type
+      let response = await fetch(`/api/tasks/${params.id}`)
 
-      if (!response.ok && response.status === 404) {
-        // Not a comparison, try as video task ID
-        const videoResponse = await fetch(`/api/single-video-evaluation-tasks/${params.id}`)
-        if (videoResponse.ok) {
-          // It's a video task - handle as single video evaluation
-          const videoData = await videoResponse.json()
-          
-          // Validate critical video task data
-          if (!videoData.video_task_id || !videoData.video_path) {
-            console.error('Invalid video task data:', videoData)
-            toast({
-              title: 'Session Initialization Failed',
-              description: 'Failed to initialize your session, please contact support',
-              variant: 'destructive'
-            })
-            router.push('/thank-you')
-            return
-          }
-          
-          setVideoTask(videoData)
-          setEvaluationMode('single_video')
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.error('Task not found:', params.id)
+          toast({
+            title: 'Evaluation Not Found',
+            description: 'The requested evaluation could not be found',
+            variant: 'destructive'
+          })
+          router.push('/thank-you')
+          return
+        }
+        throw new Error(`Failed to fetch task: ${response.status}`)
+      }
+
+      const taskData = await response.json()
+      
+      if (taskData.type === 'single_video') {
+        // Handle single video evaluation
+        const videoData = taskData.task
+        
+        // Validate critical video task data
+        if (!videoData.id || !videoData.videoPath) {
+          console.error('Invalid video task data:', videoData)
+          toast({
+            title: 'Session Initialization Failed',
+            description: 'Failed to initialize your session, please contact support',
+            variant: 'destructive'
+          })
+          router.push('/thank-you')
+          return
+        }
+        
+        setVideoTask(videoData)
+        setEvaluationMode('single_video')
           
           // Load any existing draft for single video
           const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
@@ -196,7 +211,7 @@ export default function EvaluatePage() {
             return
           }
           
-          const draftResponse = await fetch(`/api/single-video-evaluation-submissions/draft?singleVideoEvaluationTaskId=${videoData.video_task_id}&participantId=${participantId}&sessionId=${sessionId}`)
+          const draftResponse = await fetch(`/api/single-video-evaluation-submissions/draft?singleVideoEvaluationTaskId=${videoData.id}&participantId=${participantId}&sessionId=${sessionId}`)
           
           if (draftResponse.ok) {
             const draftData = await draftResponse.json()
@@ -235,85 +250,83 @@ export default function EvaluatePage() {
           }
           setLoading(false)
           return
-        } else {
-          // Neither comparison nor video task found
-          console.error('No evaluation task found for ID:', params.id)
-          toast({
-            title: 'Evaluation Not Found',
-            description: 'The requested evaluation could not be found',
-            variant: 'destructive'
-          })
-          router.push('/thank-you')
-          return
+      } else if (taskData.type === 'comparison') {
+        // Handle comparison evaluation
+        const comparisonData = taskData.task
+        setComparison(comparisonData)
+        setEvaluationMode('comparison')
+
+        // Set the actual comparison ID if not already set
+        const comparisonId = actualComparisonId || comparisonData.comparison_id
+        if (!actualComparisonId) {
+          setActualComparisonId(comparisonId)
         }
-      }
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch comparison')
-      }
+        // Load any existing draft
+        const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
+        const sessionId = getSessionId()
+        const draftResponse = await fetch(`/api/two-video-comparison-submissions/draft?twoVideoComparisonTaskId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
 
-      const data = await response.json()
-      setComparison(data)
-
-      // Set the actual comparison ID if not already set
-      const comparisonId = actualComparisonId || data.comparison_id
-      if (!actualComparisonId) {
-        setActualComparisonId(comparisonId)
-      }
-
-      // Load any existing draft
-      const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
-      const sessionId = getSessionId()
-      const draftResponse = await fetch(`/api/two-video-comparison-submissions/draft?twoVideoComparisonTaskId=${comparisonId}&participantId=${participantId}&sessionId=${sessionId}`)
-
-      if (draftResponse.ok) {
-        const draftData = await draftResponse.json()
-        if (draftData.draft) {
-          // Check if evaluation is already completed
-          if (draftData.draft.status === 'completed') {
-            toast({
-              title: 'Already Completed',
-              description: 'You have already submitted an evaluation for this comparison',
-              variant: 'destructive'
-            })
-            router.push('/thank-you')
-            return
-          }
-
-          if (draftData.draft.status === 'draft') {
-            // Check if we have the full responses saved in clientMetadata
-            const savedResponses = draftData.draft.clientMetadata?.responses
-            if (savedResponses) {
-              setResponses(savedResponses)
-            } else {
-              // Fallback to dimension scores if no full responses available
-              const dimensionScores = draftData.draft.dimensionScores || {}
-              const uiResponses: Record<string, string> = {}
-              Object.entries(dimensionScores).forEach(([dimension, score]) => {
-                if (score === 'A') {
-                  uiResponses[dimension] = 'A_slightly_better'
-                } else if (score === 'B') {
-                  uiResponses[dimension] = 'B_slightly_better'
-                } else {
-                  uiResponses[dimension] = 'Equal'
-                }
+        if (draftResponse.ok) {
+          const draftData = await draftResponse.json()
+          if (draftData.draft) {
+            // Check if evaluation is already completed
+            if (draftData.draft.status === 'completed') {
+              toast({
+                title: 'Already Completed',
+                description: 'You have already submitted an evaluation for this comparison',
+                variant: 'destructive'
               })
-              setResponses(uiResponses)
+              router.push('/thank-you')
+              return
             }
-            setLastSaved(new Date(draftData.draft.lastSavedAt))
 
-            toast({
-              title: 'Draft Loaded',
-              description: 'Your previous progress has been restored',
-            })
+            if (draftData.draft.status === 'draft') {
+              // Check if we have the full responses saved in clientMetadata
+              const savedResponses = draftData.draft.clientMetadata?.responses
+              if (savedResponses) {
+                setResponses(savedResponses)
+              } else {
+                // Fallback to dimension scores if no full responses available
+                const dimensionScores = draftData.draft.dimensionScores || {}
+                const uiResponses: Record<string, string> = {}
+                Object.entries(dimensionScores).forEach(([dimension, score]) => {
+                  if (score === 'A') {
+                    uiResponses[dimension] = 'A_slightly_better'
+                  } else if (score === 'B') {
+                    uiResponses[dimension] = 'B_slightly_better'
+                  } else {
+                    uiResponses[dimension] = 'Equal'
+                  }
+                })
+                setResponses(uiResponses)
+              }
+              setLastSaved(new Date(draftData.draft.lastSavedAt))
+
+              toast({
+                title: 'Draft Loaded',
+                description: 'Your previous progress has been restored',
+              })
+            }
           }
         }
+        setLoading(false)
+      } else {
+        // Unknown task type
+        console.error('Unknown task type:', taskData.type)
+        toast({
+          title: 'Evaluation Not Found',
+          description: 'The requested evaluation could not be found',
+          variant: 'destructive'
+        })
+        router.push('/thank-you')
+        return
       }
     } catch (error) {
-      console.error('Error fetching comparison:', error)
+      console.error('Error fetching task:', error)
       toast({
         title: 'Error',
-        description: 'Failed to load comparison',
+        description: 'Failed to load evaluation task',
         variant: 'destructive'
       })
     } finally {
@@ -349,7 +362,7 @@ export default function EvaluatePage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            videoTaskId: videoTask?.video_task_id,
+            singleVideoEvaluationTaskId: videoTask?.id,
             participantId,
             experimentId,
             prolificPid,
@@ -853,7 +866,7 @@ export default function EvaluatePage() {
       if (evaluationMode === 'single_video') {
         // Debug the payload before sending
         const payload = {
-          video_task_id: videoTask?.video_task_id,
+          video_task_id: videoTask?.id,
           dimension_scores: responses,
           completion_time_seconds: (Date.now() - startTime) / 1000,
           participant_id: participantId,
@@ -1032,14 +1045,14 @@ export default function EvaluatePage() {
             <div className="flex items-center gap-2">
               <Badge variant="default" className="text-sm bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
                 {evaluationMode === 'single_video' 
-                  ? (videoTask?.scenario_metadata.name || videoTask?.scenario_id)
+                  ? (videoTask?.metadata?.scenario?.name || videoTask?.scenarioId)
                   : (comparison?.scenario_metadata.name || comparison?.scenario_id)
                 }
               </Badge>
               {evaluationMode === 'single_video' && (
                 <>
                   <Badge variant="outline" className="text-sm">
-                    {videoTask?.model_name}
+                    {videoTask?.modelName}
                   </Badge>
                   <span className="text-sm text-slate-400">Model</span>
                 </>
@@ -1048,9 +1061,9 @@ export default function EvaluatePage() {
                 <span className="text-sm text-slate-400">Scenario</span>
               )}
             </div>
-            {evaluationMode === 'single_video' && videoTask?.scenario_metadata.description && (
+            {evaluationMode === 'single_video' && videoTask?.metadata?.scenario?.description && (
               <p className="text-sm text-slate-300 mt-2">
-                {videoTask.scenario_metadata.description}
+                {videoTask.metadata.scenario.description}
               </p>
             )}
             {evaluationMode === 'comparison' && comparison?.scenario_metadata.description && (
@@ -1449,7 +1462,7 @@ export default function EvaluatePage() {
                 <div className="relative pt-[56.25%]">
                   <video
                     ref={videoARef}
-                    src={videoTask?.video_path}
+                    src={videoTask?.videoPath}
                     className="absolute inset-0 w-full h-full object-contain"
                     loop
                     playsInline
