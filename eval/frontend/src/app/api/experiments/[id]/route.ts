@@ -186,17 +186,29 @@ export async function DELETE(
     
     const participantIds = participants.map(p => p.id);
 
-    // 1. Delete evaluations first (they reference comparisons and participants)
+    // 1. Delete all submissions by participant ID to ensure we catch all references
+    await prisma.twoVideoComparisonSubmission.deleteMany({
+      where: { 
+        participantId: { in: participantIds }
+      }
+    });
+
+    await prisma.singleVideoEvaluationSubmission.deleteMany({
+      where: { 
+        participantId: { in: participantIds }
+      }
+    });
+
+    // 2. Also delete any submissions directly by experiment ID as a safety net
     await prisma.twoVideoComparisonSubmission.deleteMany({
       where: { experimentId: id }
     });
 
-    // 2. Delete ALL single video evaluations for this experiment
     await prisma.singleVideoEvaluationSubmission.deleteMany({
       where: { experimentId: id }
     });
 
-    // 3. Delete participants (they are no longer referenced by any evaluations)
+    // 3. Now safe to delete participants (no more foreign key references)
     await prisma.participant.deleteMany({
       where: { experimentId: id }
     });

@@ -51,7 +51,19 @@ export default function Home() {
         const experiment = allExperiments.find((exp: any) => exp.id === experimentId)
         
         if (!experiment) {
-          throw new Error('Experiment not found or no longer active')
+          // Experiment no longer exists, clear session data and show all experiments
+          console.warn('Stored experiment ID no longer exists, clearing session data')
+          sessionStorage.removeItem('experiment_id')
+          sessionStorage.removeItem('is_prolific')
+          sessionStorage.removeItem('prolific_pid')
+          sessionStorage.removeItem('session_id')
+          sessionStorage.removeItem('participant_id')
+          
+          // Fall back to showing all active experiments
+          const activeExperiments = allExperiments.filter((exp: any) => exp.status === 'active')
+          setExperiments(activeExperiments)
+          setIsProlific(false)
+          return
         }
         
         setExperiments([experiment])
