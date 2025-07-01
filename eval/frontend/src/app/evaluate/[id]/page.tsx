@@ -667,7 +667,8 @@ export default function EvaluatePage() {
     }
   }
 
-  const handlePlayBoth = async () => {
+  // Wrap handlePlayBoth in useCallback
+  const handlePlayBoth = useCallback(async () => {
     if (playerARef.current && playerBRef.current) {
       const playerA = playerARef.current.getInternalPlayer()
       const playerB = playerBRef.current.getInternalPlayer()
@@ -702,9 +703,10 @@ export default function EvaluatePage() {
         }
       }
     }
-  }
+  }, [playerARef, playerBRef, playingA, playingB, syncMode, currentTimeA, currentTimeB]);
 
-  const handleSeek = (video: 'A' | 'B', time: number) => {
+  // Wrap handleSeek in useCallback
+  const handleSeek = useCallback((video: 'A' | 'B', time: number) => {
     const playerRef = video === 'A' ? playerARef : playerBRef;
     if (playerRef.current) {
       const player = playerRef.current.getInternalPlayer()
@@ -736,7 +738,7 @@ export default function EvaluatePage() {
         }
       }
     }
-  };
+  }, [playerARef, playerBRef, syncMode, comparison]);
 
   const handleVolumeChange = (video: 'A' | 'B', volume: number) => {
     const playerRef = video === 'A' ? playerARef : playerBRef
@@ -770,7 +772,8 @@ export default function EvaluatePage() {
     }
   }
 
-  const handleRestart = () => {
+  // Wrap handleRestart in useCallback
+  const handleRestart = useCallback(() => {
     if (playerARef.current) {
       const playerA = playerARef.current.getInternalPlayer()
       if (playerA) {
@@ -786,11 +789,12 @@ export default function EvaluatePage() {
       }
     }
     console.log('Videos restarted')
-  }
+  }, [playerARef, playerBRef]);
 
-  const toggleSync = () => {
-    setSyncMode(!syncMode)
-  }
+  // Wrap toggleSync in useCallback
+  const toggleSync = useCallback(() => {
+    setSyncMode((prev) => !prev)
+  }, []);
 
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds)) return '0:00'
