@@ -23,9 +23,26 @@ export async function GET(
     })
 
     if (comparisonTask) {
+      // Transform the data to match the expected Comparison interface
+      const transformedTask = {
+        comparison_id: comparisonTask.id,
+        scenario_id: comparisonTask.scenarioId,
+        scenario_metadata: {
+          name: (comparisonTask.metadata as any)?.scenario?.name || comparisonTask.scenarioId,
+          description: (comparisonTask.metadata as any)?.scenario?.description || ''
+        },
+        model_a_video_path: comparisonTask.videoAPath,
+        model_b_video_path: comparisonTask.videoBPath,
+        randomized_labels: {
+          A: comparisonTask.modelA,
+          B: comparisonTask.modelB
+        },
+        experiment: comparisonTask.experiment
+      }
+
       return NextResponse.json({
         type: 'comparison',
-        task: comparisonTask
+        task: transformedTask
       })
     }
 
