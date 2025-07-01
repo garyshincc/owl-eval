@@ -26,6 +26,7 @@ import {
   Star
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import ReactPlayer from 'react-player'
 
 interface Comparison {
   comparison_id: string
@@ -139,8 +140,8 @@ export default function EvaluatePage() {
     return sessionId
   }, [])
 
-  const videoARef = useRef<HTMLVideoElement>(null)
-  const videoBRef = useRef<HTMLVideoElement>(null)
+  const playerARef = useRef<ReactPlayer>(null)
+  const playerBRef = useRef<ReactPlayer>(null)
   const [playingA, setPlayingA] = useState(false)
   const [playingB, setPlayingB] = useState(false)
   const [currentTimeA, setCurrentTimeA] = useState(0)
@@ -175,11 +176,11 @@ export default function EvaluatePage() {
       }
 
       const taskData = await response.json()
-      
+
       if (taskData.type === 'single_video') {
         // Handle single video evaluation
         const videoData = taskData.task
-        
+
         // Validate critical video task data
         if (!videoData.id || !videoData.videoPath) {
           console.error('Invalid video task data:', videoData)
@@ -191,70 +192,97 @@ export default function EvaluatePage() {
           router.push('/thank-you')
           return
         }
-        
+
         setVideoTask(videoData)
         setEvaluationMode('single_video')
-          
-          // Load any existing draft for single video
-          const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
-          const sessionId = getSessionId()
-          
-          // Validate session ID generation
-          if (!sessionId) {
-            console.error('Failed to generate session ID')
-            toast({
-              title: 'Session Initialization Failed',
-              description: 'Failed to initialize your session, please contact support',
-              variant: 'destructive'
-            })
-            router.push('/thank-you')
-            return
-          }
-          
-          const draftResponse = await fetch(`/api/single-video-evaluation-submissions/draft?singleVideoEvaluationTaskId=${videoData.id}&participantId=${participantId}&sessionId=${sessionId}`)
-          
-          if (draftResponse.ok) {
-            const draftData = await draftResponse.json()
-            if (draftData.draft) {
-              if (draftData.draft.status === 'completed') {
-                toast({
-                  title: 'Already Completed',
-                  description: 'You have already submitted an evaluation for this video',
-                  variant: 'destructive'
-                })
-                router.push('/thank-you')
-                return
-              }
-              
-              if (draftData.draft.status === 'draft') {
-                const savedResponses = draftData.draft.dimensionScores || {}
-                setResponses(savedResponses)
-                setLastSaved(new Date(draftData.draft.lastSavedAt))
-                
-                toast({
-                  title: 'Draft Loaded',
-                  description: 'Your previous progress has been restored',
-                })
-              }
-            }
-          } else if (draftResponse.status >= 500) {
-            // Server error loading draft - could indicate session issues
-            console.error('Server error loading draft:', draftResponse.status)
-            toast({
-              title: 'Session Initialization Failed',
-              description: 'Failed to initialize your session, please contact support',
-              variant: 'destructive'
-            })
-            router.push('/thank-you')
-            return
-          }
-          setLoading(false)
+
+        // Load any existing draft for single video
+        const participantId = sessionStorage.getItem('participant_id') || 'anonymous'
+        const sessionId = getSessionId()
+
+        // Validate session ID generation
+        if (!sessionId) {
+          console.error('Failed to generate session ID')
+          toast({
+            title: 'Session Initialization Failed',
+            description: 'Failed to initialize your session, please contact support',
+            variant: 'destructive'
+          })
+          router.push('/thank-you')
           return
+        }
+
+        const draftResponse = await fetch(`/api/single-video-evaluation-submissions/draft?singleVideoEvaluationTaskId=${videoData.id}&participantId=${participantId}&sessionId=${sessionId}`)
+
+        if (draftResponse.ok) {
+          const draftData = await draftResponse.json()
+          if (draftData.draft) {
+            if (draftData.draft.status === 'completed') {
+              toast({
+                title: 'Already Completed',
+                description: 'You have already submitted an evaluation for this video',
+                variant: 'destructive'
+              })
+              router.push('/thank-you')
+              return
+            }
+
+            if (draftData.draft.status === 'draft') {
+              const savedResponses = draftData.draft.dimensionScores || {}
+              setResponses(savedResponses)
+              setLastSaved(new Date(draftData.draft.lastSavedAt))
+
+              toast({
+                title: 'Draft Loaded',
+                description: 'Your previous progress has been restored',
+              })
+            }
+          }
+        } else if (draftResponse.status >= 500) {
+          // Server error loading draft - could indicate session issues
+          console.error('Server error loading draft:', draftResponse.status)
+          toast({
+            title: 'Session Initialization Failed',
+            description: 'Failed to initialize your session, please contact support',
+            variant: 'destructive'
+          })
+          router.push('/thank-you')
+          return
+        }
+        setLoading(false)
+        return
       } else if (taskData.type === 'comparison') {
         // Handle comparison evaluation
-        const comparisonData = taskData.task
+        let comparisonData = taskData.task
+
+        // Normalize comparison object if needed
+        if (!comparisonData.comparison_id) {
+          comparisonData = {
+            comparison_id: comparisonData.id,
+            scenario_id: comparisonData.scenarioId,
+            scenario_metadata: {
+              name: comparisonData.metadata?.scenario?.name || comparisonData.scenarioId || '',
+              description: comparisonData.metadata?.scenario?.description || '',
+            },
+            model_a_video_path: comparisonData.videoAPath,
+            model_b_video_path: comparisonData.videoBPath,
+            randomized_labels: {
+              A: comparisonData.modelA || 'A',
+              B: comparisonData.modelB || 'B',
+            },
+            // Optionally spread the rest of the object if you need other fields
+            ...comparisonData,
+          }
+        }
+
         setComparison(comparisonData)
         setEvaluationMode('comparison')
+
+        // Debug: log the normalized comparison object
+        console.log('Loaded comparison:', comparisonData)
+        if (!comparisonData.scenario_metadata) {
+          console.warn('scenario_metadata is missing for comparison:', comparisonData.comparison_id)
+        }
 
         // Set the actual comparison ID if not already set
         const comparisonId = actualComparisonId || comparisonData.comparison_id
@@ -487,13 +515,13 @@ export default function EvaluatePage() {
     const screeningCompleted = sessionStorage.getItem('screening_completed')
     const urlParams = new URLSearchParams(window.location.search)
     const isFromAdmin = document.referrer.includes('/admin') || urlParams.get('admin') === 'true'
-    
+
     if (!screeningCompleted && !isFromAdmin) {
       // Redirect to screening page if not completed
       router.push('/screening')
       return
     }
-    
+
     fetchComparison()
   }, [fetchComparison, router])
 
@@ -510,222 +538,166 @@ export default function EvaluatePage() {
     }
   }, [comparison, videoTask])
 
-  // Set up video event listeners for Video A
-  useEffect(() => {
-    const videoA = videoARef.current
-    if (!videoA || (!comparison && !videoTask)) return
-
-    const handlePlayA = () => {
-      console.log('Video A started playing')
-      setPlayingA(true)
+  // Set up video event listeners for ReactPlayer A
+  const handlePlayerAReady = () => {
+    console.log('Player A ready')
+    setVideoLoadedA(true)
+    if (playerARef.current) {
+      const player = playerARef.current.getInternalPlayer()
+      if (player) {
+        player.playbackRate = playbackSpeed
+        player.volume = volumeA
+        setDurationA(player.duration || 0)
+      }
     }
+  }
 
-    const handlePauseA = () => {
-      console.log('Video A paused')
-      setPlayingA(false)
+  const handlePlayerAProgress = (state: any) => {
+    setCurrentTimeA(state.playedSeconds)
+  }
+
+  const handlePlayerAPlay = () => {
+    console.log('Player A started playing')
+    setPlayingA(true)
+  }
+
+  const handlePlayerAPause = () => {
+    console.log('Player A paused')
+    setPlayingA(false)
+  }
+
+  const handlePlayerADuration = (duration: number) => {
+    console.log('Player A duration:', duration)
+    setDurationA(duration)
+  }
+
+  const handlePlayerAError = (error: any) => {
+    console.error('Player A error:', error)
+  }
+
+  // Set up video event listeners for ReactPlayer B
+  const handlePlayerBReady = () => {
+    console.log('Player B ready')
+    setVideoLoadedB(true)
+    if (playerBRef.current) {
+      const player = playerBRef.current.getInternalPlayer()
+      if (player) {
+        player.playbackRate = playbackSpeed
+        player.volume = volumeB
+        setDurationB(player.duration || 0)
+      }
     }
+  }
 
-    const handleTimeUpdateA = () => {
-      console.log('Time update A:', videoA.currentTime)
-      setCurrentTimeA(videoA.currentTime)
-    }
+  const handlePlayerBProgress = (state: any) => {
+    setCurrentTimeB(state.playedSeconds)
+  }
 
-    const handleLoadedMetadataA = () => {
-      console.log('Video A metadata loaded, duration:', videoA.duration)
-      setDurationA(videoA.duration)
-      // Set initial playback speed
-      videoA.playbackRate = playbackSpeed
-      videoA.volume = volumeA
-    }
+  const handlePlayerBPlay = () => {
+    console.log('Player B started playing')
+    setPlayingB(true)
+  }
 
-    const handleLoadedDataA = () => {
-      console.log('Video A data loaded')
-      setVideoLoadedA(true)
-      // Ensure playback settings are applied
-      videoA.playbackRate = playbackSpeed
-      videoA.volume = volumeA
-    }
+  const handlePlayerBPause = () => {
+    console.log('Player B paused')
+    setPlayingB(false)
+  }
 
-    const handleCanPlayA = () => {
-      console.log('Video A can play')
-      setVideoLoadedA(true)
-    }
+  const handlePlayerBDuration = (duration: number) => {
+    console.log('Player B duration:', duration)
+    setDurationB(duration)
+  }
 
-    const handleErrorA = (e: Event) => {
-      console.error('Video A error:', e)
-    }
-
-    // Add all event listeners
-    console.log('Adding event listeners to video A:', videoA.src)
-    videoA.addEventListener('play', handlePlayA)
-    videoA.addEventListener('pause', handlePauseA)
-    videoA.addEventListener('timeupdate', handleTimeUpdateA)
-    videoA.addEventListener('loadedmetadata', handleLoadedMetadataA)
-    videoA.addEventListener('loadeddata', handleLoadedDataA)
-    videoA.addEventListener('canplay', handleCanPlayA)
-    videoA.addEventListener('error', handleErrorA)
-
-    // Apply initial settings if video is already loaded
-    if (videoA.readyState >= 1) {
-      setDurationA(videoA.duration)
-      setVideoLoadedA(true)
-      videoA.playbackRate = playbackSpeed
-      videoA.volume = volumeA
-    }
-
-    return () => {
-      videoA.removeEventListener('play', handlePlayA)
-      videoA.removeEventListener('pause', handlePauseA)
-      videoA.removeEventListener('timeupdate', handleTimeUpdateA)
-      videoA.removeEventListener('loadedmetadata', handleLoadedMetadataA)
-      videoA.removeEventListener('loadeddata', handleLoadedDataA)
-      videoA.removeEventListener('canplay', handleCanPlayA)
-      videoA.removeEventListener('error', handleErrorA)
-    }
-  }, [comparison, videoTask, playbackSpeed, volumeA])
-
-
-  // Set up video event listeners for Video B
-  useEffect(() => {
-    const videoB = videoBRef.current
-    if (!videoB || !comparison) return
-
-    const handlePlayB = () => {
-      console.log('Video B started playing')
-      setPlayingB(true)
-    }
-
-    const handlePauseB = () => {
-      console.log('Video B paused')
-      setPlayingB(false)
-    }
-
-    const handleTimeUpdateB = () => {
-      setCurrentTimeB(videoB.currentTime)
-    }
-
-    const handleLoadedMetadataB = () => {
-      console.log('Video B metadata loaded, duration:', videoB.duration)
-      setDurationB(videoB.duration)
-      // Set initial playback speed
-      videoB.playbackRate = playbackSpeed
-      videoB.volume = volumeB
-    }
-
-    const handleLoadedDataB = () => {
-      console.log('Video B data loaded')
-      setVideoLoadedB(true)
-      // Ensure playback settings are applied
-      videoB.playbackRate = playbackSpeed
-      videoB.volume = volumeB
-    }
-
-    const handleCanPlayB = () => {
-      console.log('Video B can play')
-      setVideoLoadedB(true)
-    }
-
-    const handleErrorB = (e: Event) => {
-      console.error('Video B error:', e)
-    }
-
-    // Add all event listeners
-    videoB.addEventListener('play', handlePlayB)
-    videoB.addEventListener('pause', handlePauseB)
-    videoB.addEventListener('timeupdate', handleTimeUpdateB)
-    videoB.addEventListener('loadedmetadata', handleLoadedMetadataB)
-    videoB.addEventListener('loadeddata', handleLoadedDataB)
-    videoB.addEventListener('canplay', handleCanPlayB)
-    videoB.addEventListener('error', handleErrorB)
-
-    // Apply initial settings if video is already loaded
-    if (videoB.readyState >= 1) {
-      setDurationB(videoB.duration)
-      setVideoLoadedB(true)
-      videoB.playbackRate = playbackSpeed
-      videoB.volume = volumeB
-    }
-
-    return () => {
-      videoB.removeEventListener('play', handlePlayB)
-      videoB.removeEventListener('pause', handlePauseB)
-      videoB.removeEventListener('timeupdate', handleTimeUpdateB)
-      videoB.removeEventListener('loadedmetadata', handleLoadedMetadataB)
-      videoB.removeEventListener('loadeddata', handleLoadedDataB)
-      videoB.removeEventListener('canplay', handleCanPlayB)
-      videoB.removeEventListener('error', handleErrorB)
-    }
-  }, [comparison, playbackSpeed, volumeB])
+  const handlePlayerBError = (error: any) => {
+    console.error('Player B error:', error)
+  }
 
   // Video control functions
   const handlePlayA = async () => {
-    if (videoARef.current) {
-      if (playingA) {
-        videoARef.current.pause()
-      } else {
+    if (playerARef.current) {
+      const player = playerARef.current.getInternalPlayer()
+      if (player) {
         try {
-          await videoARef.current.play()
-          if (syncMode && videoBRef.current && !playingB) {
-            try {
-              await videoBRef.current.play()
-            } catch (e) {
-              console.error('Error playing video B in sync:', e)
+          if (playingA) {
+            player.pause()
+          } else {
+            await player.play()
+            if (syncMode && playerBRef.current && !playingB) {
+              const playerB = playerBRef.current.getInternalPlayer()
+              if (playerB) {
+                try {
+                  await playerB.play()
+                } catch (e) {
+                  console.error('Error playing player B in sync:', e)
+                }
+              }
             }
           }
         } catch (error) {
-          console.error('Error playing video A:', error)
+          console.error('Error playing player A:', error)
         }
       }
     }
   }
 
   const handlePlayB = async () => {
-    if (videoBRef.current) {
-      if (playingB) {
-        videoBRef.current.pause()
-      } else {
+    if (playerBRef.current) {
+      const player = playerBRef.current.getInternalPlayer()
+      if (player) {
         try {
-          await videoBRef.current.play()
-          if (syncMode && videoARef.current && !playingA) {
-            try {
-              await videoARef.current.play()
-            } catch (e) {
-              console.error('Error playing video A in sync:', e)
+          if (playingB) {
+            player.pause()
+          } else {
+            await player.play()
+            if (syncMode && playerARef.current && !playingA) {
+              const playerA = playerARef.current.getInternalPlayer()
+              if (playerA) {
+                try {
+                  await playerA.play()
+                } catch (e) {
+                  console.error('Error playing player A in sync:', e)
+                }
+              }
             }
           }
         } catch (error) {
-          console.error('Error playing video B:', error)
+          console.error('Error playing player B:', error)
         }
       }
     }
   }
 
   const handlePlayBoth = async () => {
-    if (videoARef.current && videoBRef.current) {
-      const bothPlaying = playingA && playingB;
-      if (bothPlaying) {
-        videoARef.current.pause();
-        videoBRef.current.pause();
-      } else {
-        try {
-          if (syncMode) {
-            const avgTime = (currentTimeA + currentTimeB) / 2;
-            videoARef.current.currentTime = avgTime;
-            videoBRef.current.currentTime = avgTime;
-            await new Promise(resolve => setTimeout(resolve, 50));
-          }
-          await Promise.all([videoARef.current.play(), videoBRef.current.play()]);
-        } catch (error) {
-          console.error('Error playing videos:', error);
+    if (playerARef.current && playerBRef.current) {
+      const playerA = playerARef.current.getInternalPlayer()
+      const playerB = playerBRef.current.getInternalPlayer()
+
+      if (playerA && playerB) {
+        const bothPlaying = playingA && playingB;
+        if (bothPlaying) {
+          playerA.pause();
+          playerB.pause();
+        } else {
           try {
-            await videoARef.current.play();
-          } catch (e) {
-            console.error('Error playing video A:', e);
-          }
-          try {
-            await videoBRef.current.play();
-          } catch (e) {
-            console.error('Error playing video B:', e);
+            if (syncMode) {
+              const avgTime = (currentTimeA + currentTimeB) / 2;
+              playerA.currentTime = avgTime;
+              playerB.currentTime = avgTime;
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            await Promise.all([playerA.play(), playerB.play()]);
+          } catch (error) {
+            console.error('Error playing videos:', error);
+            try {
+              await playerA.play();
+            } catch (e) {
+              console.error('Error playing player A:', e);
+            }
+            try {
+              await playerB.play();
+            } catch (e) {
+              console.error('Error playing player B:', e);
+            }
           }
         }
       }
@@ -733,27 +705,33 @@ export default function EvaluatePage() {
   }
 
   const handleSeek = (video: 'A' | 'B', time: number) => {
-    const videoRef = video === 'A' ? videoARef : videoBRef;
-    if (videoRef.current) {
-      const clampedTime = Math.max(0, Math.min(time, videoRef.current.duration || 0));
-      videoRef.current.currentTime = clampedTime;
-      
-      // Immediately update the state to sync the progress bar
-      if (video === 'A') {
-        setCurrentTimeA(clampedTime);
-      } else {
-        setCurrentTimeB(clampedTime);
-      }
-      
-      // Handle sync mode for comparison videos
-      if (syncMode && comparison) {
-        const otherRef = video === 'A' ? videoBRef : videoARef;
-        if (otherRef.current) {
-          otherRef.current.currentTime = clampedTime;
-          if (video === 'A') {
-            setCurrentTimeB(clampedTime);
-          } else {
-            setCurrentTimeA(clampedTime);
+    const playerRef = video === 'A' ? playerARef : playerBRef;
+    if (playerRef.current) {
+      const player = playerRef.current.getInternalPlayer()
+      if (player) {
+        const clampedTime = Math.max(0, Math.min(time, player.duration || 0));
+        player.currentTime = clampedTime;
+
+        // Immediately update the state to sync the progress bar
+        if (video === 'A') {
+          setCurrentTimeA(clampedTime);
+        } else {
+          setCurrentTimeB(clampedTime);
+        }
+
+        // Handle sync mode for comparison videos
+        if (syncMode && comparison) {
+          const otherRef = video === 'A' ? playerBRef : playerARef;
+          if (otherRef.current) {
+            const otherPlayer = otherRef.current.getInternalPlayer()
+            if (otherPlayer) {
+              otherPlayer.currentTime = clampedTime;
+              if (video === 'A') {
+                setCurrentTimeB(clampedTime);
+              } else {
+                setCurrentTimeA(clampedTime);
+              }
+            }
           }
         }
       }
@@ -761,36 +739,51 @@ export default function EvaluatePage() {
   };
 
   const handleVolumeChange = (video: 'A' | 'B', volume: number) => {
-    const videoRef = video === 'A' ? videoARef : videoBRef
+    const playerRef = video === 'A' ? playerARef : playerBRef
     const setVolume = video === 'A' ? setVolumeA : setVolumeB
-    if (videoRef.current) {
-      videoRef.current.volume = volume
-      setVolume(volume)
+    if (playerRef.current) {
+      const player = playerRef.current.getInternalPlayer()
+      if (player) {
+        player.volume = volume
+        setVolume(volume)
+      }
     }
   }
 
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed)
 
-    // Apply to both videos
-    if (videoARef.current) {
-      videoARef.current.playbackRate = speed
-      console.log(`Set Video A playback rate to ${speed}`)
+    // Apply to both players
+    if (playerARef.current) {
+      const playerA = playerARef.current.getInternalPlayer()
+      if (playerA) {
+        playerA.playbackRate = speed
+        console.log(`Set Player A playback rate to ${speed}`)
+      }
     }
-    if (videoBRef.current) {
-      videoBRef.current.playbackRate = speed
-      console.log(`Set Video B playback rate to ${speed}`)
+    if (playerBRef.current) {
+      const playerB = playerBRef.current.getInternalPlayer()
+      if (playerB) {
+        playerB.playbackRate = speed
+        console.log(`Set Player B playback rate to ${speed}`)
+      }
     }
   }
 
   const handleRestart = () => {
-    if (videoARef.current) {
-      videoARef.current.currentTime = 0
-      setCurrentTimeA(0)
+    if (playerARef.current) {
+      const playerA = playerARef.current.getInternalPlayer()
+      if (playerA) {
+        playerA.currentTime = 0
+        setCurrentTimeA(0)
+      }
     }
-    if (videoBRef.current) {
-      videoBRef.current.currentTime = 0
-      setCurrentTimeB(0)
+    if (playerBRef.current) {
+      const playerB = playerBRef.current.getInternalPlayer()
+      if (playerB) {
+        playerB.currentTime = 0
+        setCurrentTimeB(0)
+      }
     }
     console.log('Videos restarted')
   }
@@ -874,11 +867,11 @@ export default function EvaluatePage() {
           evaluator_id: prolificPid || 'anonymous',
           session_id: sessionId
         };
-        
+
         console.log('Single video evaluation payload:', payload);
         console.log('VideoTask object:', videoTask);
         console.log('Responses object:', responses);
-        
+
         // Handle single video evaluation submission
         submitResponse = await fetch('/api/submit-single-video-evaluation', {
           method: 'POST',
@@ -889,7 +882,7 @@ export default function EvaluatePage() {
         })
 
         submitResult = await submitResponse.json()
-        
+
         if (!submitResponse.ok) {
           console.error('Single video submission failed:', submitResult);
           toast({
@@ -998,6 +991,86 @@ export default function EvaluatePage() {
     }
   }
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if focus is on input, textarea, or select
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (['input', 'textarea', 'select', 'button'].includes(tag)) return;
+
+      // Space: Play/Pause
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (evaluationMode === 'comparison') {
+          handlePlayBoth();
+        } else {
+          if (playerARef.current) {
+            const player = playerARef.current.getInternalPlayer();
+            if (player) {
+              if (player.paused) {
+                player.play();
+                setPlayingA(true);
+              } else {
+                player.pause();
+                setPlayingA(false);
+              }
+            }
+          }
+        }
+      }
+
+      // Left Arrow: Seek -5s
+      if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        if (evaluationMode === 'comparison') {
+          handleSeek('A', Math.max(0, currentTimeA - 5));
+          handleSeek('B', Math.max(0, currentTimeB - 5));
+        } else {
+          handleSeek('A', Math.max(0, currentTimeA - 5));
+        }
+      }
+
+      // Right Arrow: Seek +5s
+      if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        if (evaluationMode === 'comparison') {
+          handleSeek('A', Math.min(durationA, currentTimeA + 5));
+          handleSeek('B', Math.min(durationB, currentTimeB + 5));
+        } else {
+          handleSeek('A', Math.min(durationA, currentTimeA + 5));
+        }
+      }
+
+      // R: Restart
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        handleRestart();
+      }
+
+      // S: Toggle Sync (comparison only)
+      if ((e.key === 's' || e.key === 'S') && evaluationMode === 'comparison') {
+        e.preventDefault();
+        toggleSync();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    evaluationMode,
+    currentTimeA,
+    currentTimeB,
+    durationA,
+    durationB,
+    handleRestart,
+    handleSeek,
+    handlePlayBoth,
+    toggleSync,
+    playerARef,
+    playerBRef,
+  ]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -1044,9 +1117,17 @@ export default function EvaluatePage() {
           <div className="mt-2 space-y-1 text-sm">
             <div className="flex items-center gap-2">
               <Badge variant="default" className="text-sm bg-cyan-500/20 text-cyan-300 border-cyan-500/30">
-                {evaluationMode === 'single_video' 
-                  ? (videoTask?.metadata?.scenario?.name || videoTask?.scenarioId)
-                  : (comparison?.scenario_metadata.name || comparison?.scenario_id)
+                {evaluationMode === 'single_video'
+                  ? (
+                    videoTask?.metadata?.scenario?.name
+                      ? videoTask.metadata.scenario.name
+                      : videoTask?.scenarioId
+                  )
+                  : (
+                    comparison?.scenario_metadata?.name
+                      ? comparison.scenario_metadata.name
+                      : comparison?.scenario_id
+                  )
                 }
               </Badge>
               {evaluationMode === 'single_video' && (
@@ -1063,12 +1144,12 @@ export default function EvaluatePage() {
             </div>
             {evaluationMode === 'single_video' && videoTask?.metadata?.scenario?.description && (
               <p className="text-sm text-slate-300 mt-2">
-                {videoTask.metadata.scenario.description}
+                {videoTask?.metadata?.scenario?.description}
               </p>
             )}
-            {evaluationMode === 'comparison' && comparison?.scenario_metadata.description && (
+            {evaluationMode === 'comparison' && comparison?.scenario_metadata?.description && (
               <p className="text-sm text-slate-300 mt-2">
-                {comparison?.scenario_metadata.description}
+                {comparison?.scenario_metadata?.description}
               </p>
             )}
           </div>
@@ -1100,18 +1181,20 @@ export default function EvaluatePage() {
                   <>
                     <Button
                       onClick={async () => {
-                        const video = videoARef.current;
-                        if (video) {
-                          try {
-                            if (video.paused) {
-                              await video.play();
-                              setPlayingA(true);
-                            } else {
-                              video.pause();
-                              setPlayingA(false);
+                        if (playerARef.current) {
+                          const player = playerARef.current.getInternalPlayer();
+                          if (player) {
+                            try {
+                              if (player.paused) {
+                                await player.play();
+                                setPlayingA(true);
+                              } else {
+                                player.pause();
+                                setPlayingA(false);
+                              }
+                            } catch (error) {
+                              console.error('Error controlling video:', error);
                             }
-                          } catch (error) {
-                            console.error('Error controlling video:', error);
                           }
                         }
                       }}
@@ -1229,248 +1312,311 @@ export default function EvaluatePage() {
           {evaluationMode === 'comparison' ? (
             // Comparison mode: Two videos side by side
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Model A */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-blue-600">Model A</h3>
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={handlePlayA}
-                    size="sm"
-                    variant={playingA ? "default" : "outline"}
-                  >
-                    {playingA ? (
-                      <Pause className="h-4 w-4" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div className={`relative bg-black rounded-lg overflow-hidden mx-auto ${getVideoSizeClass()}`}>
-                <div className="relative pt-[56.25%]">
-                  <video
-                    ref={videoARef}
-                    src={comparison?.model_a_video_path}
-                    className="absolute inset-0 w-full h-full object-contain"
-                    loop
-                    playsInline
-                    preload="metadata"
-                    crossOrigin="anonymous"
-                  />
-
-                  {/* Loading indicator */}
-                  {!videoLoadedA && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                      <div className="flex items-center gap-2 text-white">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                        <span className="text-sm">Loading Video A...</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Video overlay with time */}
-                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono">
-                    {formatTime(currentTimeA)} / {formatTime(durationA)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Model A Controls */}
-              <div className="space-y-3 bg-slate-800/50 border border-slate-600/50 rounded-lg p-4">
-                {/* Progress bar */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-slate-300">
-                    <span>Progress</span>
-                    <span className="flex items-center gap-2">
-                      {syncMode && (
-                        <span className="text-cyan-400 font-medium">🔗 SYNC</span>
+              {/* Model A */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-blue-600">Model A</h3>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handlePlayA}
+                      size="sm"
+                      variant={playingA ? "default" : "outline"}
+                    >
+                      {playingA ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
                       )}
-                      <span>{getProgress(currentTimeA, durationA)}%</span>
-                    </span>
+                    </Button>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={durationA || 100}
-                    value={currentTimeA}
-                    onChange={(e) => handleSeek('A', Number(e.target.value))}
-                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer 
+                </div>
+
+                <div className={`relative bg-black rounded-lg overflow-hidden mx-auto ${getVideoSizeClass()}`}>
+                  <div className="relative pt-[56.25%]">
+                    <ReactPlayer
+                      ref={playerARef}
+                      url={comparison?.model_a_video_path}
+                      width="100%"
+                      height="100%"
+                      loop
+                      muted={volumeA === 0}
+                      volume={volumeA}
+                      playbackRate={playbackSpeed}
+                      playing={playingA}
+                      onReady={handlePlayerAReady}
+                      onProgress={handlePlayerAProgress}
+                      onPlay={handlePlayerAPlay}
+                      onPause={handlePlayerAPause}
+                      onDuration={handlePlayerADuration}
+                      onError={handlePlayerAError}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                      }}
+                      config={{
+                        file: {
+                          attributes: {
+                            crossOrigin: 'anonymous',
+                            preload: 'metadata'
+                          }
+                        }
+                      }}
+                    />
+
+                    {/* Loading indicator */}
+                    {!videoLoadedA && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                          <span className="text-sm">Loading Video A...</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Video overlay with time */}
+                    <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono z-10">
+                      {formatTime(currentTimeA)} / {formatTime(durationA)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Model A Controls */}
+                <div className="space-y-3 bg-slate-800/50 border border-slate-600/50 rounded-lg p-4">
+                  {/* Progress bar */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-slate-300">
+                      <span>Progress</span>
+                      <span className="flex items-center gap-2">
+                        {syncMode && (
+                          <span className="text-cyan-400 font-medium">🔗 SYNC</span>
+                        )}
+                        <span>{getProgress(currentTimeA, durationA)}%</span>
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={durationA || 100}
+                      value={currentTimeA}
+                      onChange={(e) => handleSeek('A', Number(e.target.value))}
+                      className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer 
                               focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-opacity-50
                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
                               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-lg"
-                  />
-                </div>
+                    />
+                  </div>
 
-                {/* Volume control */}
-                <div className="flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 text-slate-400" />
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={volumeA}
-                    onChange={(e) => handleVolumeChange('A', Number(e.target.value))}
-                    className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer
+                  {/* Volume control */}
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="h-4 w-4 text-slate-400" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      value={volumeA}
+                      onChange={(e) => handleVolumeChange('A', Number(e.target.value))}
+                      className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer
                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3
                               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
-                  />
-                  <span className="text-xs text-slate-300 w-8">{Math.round(volumeA * 100)}%</span>
-                </div>
+                    />
+                    <span className="text-xs text-slate-300 w-8">{Math.round(volumeA * 100)}%</span>
+                  </div>
 
-                {/* Quick seek buttons */}
-                <div className="flex justify-center gap-2">
-                  <Button
-                    onClick={() => handleSeek('A', Math.max(0, currentTimeA - 5))}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <SkipBack className="h-3 w-3 mr-1" />
-                    -5s
-                  </Button>
-                  <Button
-                    onClick={() => handleSeek('A', Math.min(durationA, currentTimeA + 5))}
-                    size="sm"
-                    variant="outline"
-                  >
-                    +5s
-                    <SkipForward className="h-3 w-3 ml-1" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Model B */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-purple-600">Model B</h3>
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={handlePlayB}
-                    size="sm"
-                    variant={playingB ? "default" : "outline"}
-                  >
-                    {playingB ? (
-                      <Pause className="h-4 w-4" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div className={`relative bg-black rounded-lg overflow-hidden mx-auto ${getVideoSizeClass()}`}>
-                <div className="relative pt-[56.25%]">
-                  <video
-                    ref={videoBRef}
-                    src={comparison?.model_b_video_path}
-                    className="absolute inset-0 w-full h-full object-contain"
-                    loop
-                    playsInline
-                    preload="metadata"
-                    crossOrigin="anonymous"
-                  />
-
-                  {/* Loading indicator */}
-                  {!videoLoadedB && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                      <div className="flex items-center gap-2 text-white">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                        <span className="text-sm">Loading Video B...</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Video overlay with time */}
-                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono">
-                    {formatTime(currentTimeB)} / {formatTime(durationB)}
+                  {/* Quick seek buttons */}
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      onClick={() => handleSeek('A', Math.max(0, currentTimeA - 5))}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <SkipBack className="h-3 w-3 mr-1" />
+                      -5s
+                    </Button>
+                    <Button
+                      onClick={() => handleSeek('A', Math.min(durationA, currentTimeA + 5))}
+                      size="sm"
+                      variant="outline"
+                    >
+                      +5s
+                      <SkipForward className="h-3 w-3 ml-1" />
+                    </Button>
                   </div>
                 </div>
               </div>
 
-              {/* Model B Controls */}
-              <div className="space-y-3 bg-slate-800/50 border border-slate-600/50 rounded-lg p-4">
-                {/* Progress bar */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-slate-300">
-                    <span>Progress</span>
-                    <span className="flex items-center gap-2">
-                      {syncMode && (
-                        <span className="text-green-400 font-medium">🔗 SYNC</span>
+              {/* Model B */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-purple-600">Model B</h3>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handlePlayB}
+                      size="sm"
+                      variant={playingB ? "default" : "outline"}
+                    >
+                      {playingB ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
                       )}
-                      <span>{getProgress(currentTimeB, durationB)}%</span>
-                    </span>
+                    </Button>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={durationB || 100}
-                    value={currentTimeB}
-                    onChange={(e) => handleSeek('B', Number(e.target.value))}
-                    className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer 
+                </div>
+
+                <div className={`relative bg-black rounded-lg overflow-hidden mx-auto ${getVideoSizeClass()}`}>
+                  <div className="relative pt-[56.25%]">
+                    <ReactPlayer
+                      ref={playerBRef}
+                      url={comparison?.model_b_video_path}
+                      width="100%"
+                      height="100%"
+                      loop
+                      muted={volumeB === 0}
+                      volume={volumeB}
+                      playbackRate={playbackSpeed}
+                      playing={playingB}
+                      onReady={handlePlayerBReady}
+                      onProgress={handlePlayerBProgress}
+                      onPlay={handlePlayerBPlay}
+                      onPause={handlePlayerBPause}
+                      onDuration={handlePlayerBDuration}
+                      onError={handlePlayerBError}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                      }}
+                      config={{
+                        file: {
+                          attributes: {
+                            crossOrigin: 'anonymous',
+                            preload: 'metadata'
+                          }
+                        }
+                      }}
+                    />
+
+                    {/* Loading indicator */}
+                    {!videoLoadedB && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+                        <div className="flex items-center gap-2 text-white">
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                          <span className="text-sm">Loading Video B...</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Video overlay with time */}
+                    <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono z-10">
+                      {formatTime(currentTimeB)} / {formatTime(durationB)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Model B Controls */}
+                <div className="space-y-3 bg-slate-800/50 border border-slate-600/50 rounded-lg p-4">
+                  {/* Progress bar */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-slate-300">
+                      <span>Progress</span>
+                      <span className="flex items-center gap-2">
+                        {syncMode && (
+                          <span className="text-green-400 font-medium">🔗 SYNC</span>
+                        )}
+                        <span>{getProgress(currentTimeB, durationB)}%</span>
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={durationB || 100}
+                      value={currentTimeB}
+                      onChange={(e) => handleSeek('B', Number(e.target.value))}
+                      className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer 
                               focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-50
                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
                               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-400 [&::-webkit-slider-thumb]:shadow-lg"
-                  />
-                </div>
+                    />
+                  </div>
 
-                {/* Volume control */}
-                <div className="flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 text-slate-400" />
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={volumeB}
-                    onChange={(e) => handleVolumeChange('B', Number(e.target.value))}
-                    className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer
+                  {/* Volume control */}
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="h-4 w-4 text-slate-400" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      value={volumeB}
+                      onChange={(e) => handleVolumeChange('B', Number(e.target.value))}
+                      className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer
                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3
                               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-400"
-                  />
-                  <span className="text-xs text-slate-300 w-8">{Math.round(volumeB * 100)}%</span>
-                </div>
+                    />
+                    <span className="text-xs text-slate-300 w-8">{Math.round(volumeB * 100)}%</span>
+                  </div>
 
-                {/* Quick seek buttons */}
-                <div className="flex justify-center gap-2">
-                  <Button
-                    onClick={() => handleSeek('B', Math.max(0, currentTimeB - 5))}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <SkipBack className="h-3 w-3 mr-1" />
-                    -5s
-                  </Button>
-                  <Button
-                    onClick={() => handleSeek('B', Math.min(durationB, currentTimeB + 5))}
-                    size="sm"
-                    variant="outline"
-                  >
-                    +5s
-                    <SkipForward className="h-3 w-3 ml-1" />
-                  </Button>
+                  {/* Quick seek buttons */}
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      onClick={() => handleSeek('B', Math.max(0, currentTimeB - 5))}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <SkipBack className="h-3 w-3 mr-1" />
+                      -5s
+                    </Button>
+                    <Button
+                      onClick={() => handleSeek('B', Math.min(durationB, currentTimeB + 5))}
+                      size="sm"
+                      variant="outline"
+                    >
+                      +5s
+                      <SkipForward className="h-3 w-3 ml-1" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
           ) : (
             // Single video mode: One centered video
             <div className="flex justify-center mb-6">
               <div className={`relative bg-black rounded-lg overflow-hidden ${videoSize === 'large' ? 'w-full max-w-6xl' : videoSize === 'medium' ? 'w-full max-w-4xl' : 'w-full max-w-2xl'}`}>
                 <div className="relative pt-[56.25%]">
-                  <video
-                    ref={videoARef}
-                    src={videoTask?.videoPath}
-                    className="absolute inset-0 w-full h-full object-contain"
+                  <ReactPlayer
+                    ref={playerARef}
+                    url={videoTask?.videoPath}
+                    width="100%"
+                    height="100%"
                     loop
-                    playsInline
-                    preload="metadata"
+                    muted={volumeA === 0}
+                    volume={volumeA}
+                    playbackRate={playbackSpeed}
+                    playing={playingA}
+                    onReady={handlePlayerAReady}
+                    onProgress={handlePlayerAProgress}
+                    onPlay={handlePlayerAPlay}
+                    onPause={handlePlayerAPause}
+                    onDuration={handlePlayerADuration}
+                    onError={handlePlayerAError}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                    }}
+                    config={{
+                      file: {
+                        attributes: {
+                          preload: 'metadata'
+                        }
+                      }
+                    }}
                   />
-                
+
                   {/* Video overlay with time */}
-                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs z-10">
                     {Math.floor(currentTimeA)}s / {Math.floor(durationA)}s
                   </div>
                 </div>
@@ -1578,24 +1724,22 @@ export default function EvaluatePage() {
                       <button
                         key={rating}
                         onClick={() => setResponses({ ...responses, [dimension]: rating })}
-                        className={`p-1 rounded-full transition-colors ${
-                          responses[dimension] && typeof responses[dimension] === 'number' && responses[dimension] >= rating
-                            ? 'text-yellow-400 hover:text-yellow-300'
-                            : 'text-slate-500 hover:text-slate-400'
-                        }`}
+                        className={`p-1 rounded-full transition-colors ${responses[dimension] && typeof responses[dimension] === 'number' && responses[dimension] >= rating
+                          ? 'text-yellow-400 hover:text-yellow-300'
+                          : 'text-slate-500 hover:text-slate-400'
+                          }`}
                       >
-                        <Star 
-                          className={`h-8 w-8 ${
-                            responses[dimension] && typeof responses[dimension] === 'number' && responses[dimension] >= rating 
-                              ? 'fill-current' 
-                              : ''
-                          }`} 
+                        <Star
+                          className={`h-8 w-8 ${responses[dimension] && typeof responses[dimension] === 'number' && responses[dimension] >= rating
+                            ? 'fill-current'
+                            : ''
+                            }`}
                         />
                       </button>
                     ))}
                   </div>
                 </div>
-                
+
                 {/* Rating Labels */}
                 <div className="flex justify-between text-xs text-slate-400 px-1">
                   <span>Poor</span>
@@ -1604,7 +1748,7 @@ export default function EvaluatePage() {
                   <span>Very Good</span>
                   <span>Excellent</span>
                 </div>
-                
+
                 {/* Current Rating Display */}
                 {responses[dimension] && (
                   <div className="text-center">
@@ -1620,48 +1764,48 @@ export default function EvaluatePage() {
                 value={responses[dimension] as string || ''}
                 onValueChange={(value) => setResponses({ ...responses, [dimension]: value })}
               >
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem
-                    value="A_much_better"
-                    id={`${dimension}_A_much`}
-                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
-                  />
-                  <Label htmlFor={`${dimension}_A_much`} className="text-slate-200 font-medium cursor-pointer">Model A is much better</Label>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                    <RadioGroupItem
+                      value="A_much_better"
+                      id={`${dimension}_A_much`}
+                      className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                    />
+                    <Label htmlFor={`${dimension}_A_much`} className="text-slate-200 font-medium cursor-pointer">Model A is much better</Label>
+                  </div>
+                  <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                    <RadioGroupItem
+                      value="A_slightly_better"
+                      id={`${dimension}_A_slight`}
+                      className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                    />
+                    <Label htmlFor={`${dimension}_A_slight`} className="text-slate-200 font-medium cursor-pointer">Model A is slightly better</Label>
+                  </div>
+                  <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                    <RadioGroupItem
+                      value="Equal"
+                      id={`${dimension}_equal`}
+                      className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                    />
+                    <Label htmlFor={`${dimension}_equal`} className="text-slate-200 font-medium cursor-pointer">Both are equally good</Label>
+                  </div>
+                  <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                    <RadioGroupItem
+                      value="B_slightly_better"
+                      id={`${dimension}_B_slight`}
+                      className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                    />
+                    <Label htmlFor={`${dimension}_B_slight`} className="text-slate-200 font-medium cursor-pointer">Model B is slightly better</Label>
+                  </div>
+                  <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
+                    <RadioGroupItem
+                      value="B_much_better"
+                      id={`${dimension}_B_much`}
+                      className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
+                    />
+                    <Label htmlFor={`${dimension}_B_much`} className="text-slate-200 font-medium cursor-pointer">Model B is much better</Label>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem
-                    value="A_slightly_better"
-                    id={`${dimension}_A_slight`}
-                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
-                  />
-                  <Label htmlFor={`${dimension}_A_slight`} className="text-slate-200 font-medium cursor-pointer">Model A is slightly better</Label>
-                </div>
-                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem
-                    value="Equal"
-                    id={`${dimension}_equal`}
-                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
-                  />
-                  <Label htmlFor={`${dimension}_equal`} className="text-slate-200 font-medium cursor-pointer">Both are equally good</Label>
-                </div>
-                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem
-                    value="B_slightly_better"
-                    id={`${dimension}_B_slight`}
-                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
-                  />
-                  <Label htmlFor={`${dimension}_B_slight`} className="text-slate-200 font-medium cursor-pointer">Model B is slightly better</Label>
-                </div>
-                <div className="flex items-center space-x-3 p-2 rounded-md hover:bg-slate-700/30 transition-colors">
-                  <RadioGroupItem
-                    value="B_much_better"
-                    id={`${dimension}_B_much`}
-                    className="border-2 border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:border-cyan-400"
-                  />
-                  <Label htmlFor={`${dimension}_B_much`} className="text-slate-200 font-medium cursor-pointer">Model B is much better</Label>
-                </div>
-              </div>
               </RadioGroup>
             )}
           </CardContent>
