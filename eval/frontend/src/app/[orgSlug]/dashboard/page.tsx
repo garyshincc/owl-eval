@@ -12,7 +12,7 @@ export default function OrganizationDashboard() {
   const params = useParams();
   const router = useRouter();
   const orgSlug = params.orgSlug as string;
-  const { currentOrganization } = useOrganization();
+  const { currentOrganization, switching } = useOrganization();
   const [stats, setStats] = useState({
     experiments: 0,
     activeExperiments: 0,
@@ -22,40 +22,57 @@ export default function OrganizationDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (currentOrganization) {
+    if (currentOrganization && !switching) {
       loadStats();
     }
-  }, [currentOrganization]);
+  }, [currentOrganization, switching]);
 
   const loadStats = async () => {
     try {
       setLoading(true);
       if (!currentOrganization) return;
 
+      console.log('🔍 [DEBUG] Dashboard - Loading stats for organization:', currentOrganization.id);
+
       const [experimentsResponse, videosResponse] = await Promise.all([
-        fetch(`/api/organizations/${currentOrganization.id}/experiments`),
-        fetch(`/api/organizations/${currentOrganization.id}/videos`),
+        fetch(`/api/organizations/${currentOrganization.id}/experiments`).catch(err => {
+          console.error('❌ [DEBUG] Dashboard - Experiments API failed:', err);
+          return { ok: false, error: err };
+        }),
+        fetch(`/api/organizations/${currentOrganization.id}/videos`).catch(err => {
+          console.error('❌ [DEBUG] Dashboard - Videos API failed:', err);
+          return { ok: false, error: err };
+        }),
       ]);
+
+      console.log('🔍 [DEBUG] Dashboard - Experiments response:', { ok: experimentsResponse.ok, status: experimentsResponse.status });
+      console.log('🔍 [DEBUG] Dashboard - Videos response:', { ok: videosResponse.ok, status: videosResponse.status });
 
       if (experimentsResponse.ok) {
         const experimentsData = await experimentsResponse.json();
+        console.log('🔍 [DEBUG] Dashboard - Experiments data:', experimentsData);
         setStats(prev => ({
           ...prev,
           experiments: experimentsData.stats?.total || 0,
           activeExperiments: experimentsData.stats?.byStatus?.ACTIVE || 0,
           totalSubmissions: experimentsData.stats?.totalSubmissions || 0,
         }));
+      } else {
+        console.error('❌ [DEBUG] Dashboard - Experiments response not OK:', experimentsResponse.status);
       }
 
       if (videosResponse.ok) {
         const videosData = await videosResponse.json();
+        console.log('🔍 [DEBUG] Dashboard - Videos data:', videosData);
         setStats(prev => ({
           ...prev,
           videos: videosData.videos?.length || 0,
         }));
+      } else {
+        console.error('❌ [DEBUG] Dashboard - Videos response not OK:', videosResponse.status);
       }
     } catch (error) {
-      console.error('Error loading dashboard stats:', error);
+      console.error('❌ [DEBUG] Dashboard - Error loading dashboard stats:', error);
     } finally {
       setLoading(false);
     }
@@ -182,7 +199,7 @@ export default function OrganizationDashboard() {
 
           <div className="pt-4 text-xs text-muted-foreground">
             <p><strong>Organization ID:</strong> {orgSlug}</p>
-            <p><strong>Status:</strong> <Badge variant="outline" className="text-xs">Active</Badge></p>
+            <div><strong>Status:</strong> <Badge variant="outline" className="text-xs">Active</Badge></div>
           </div>
         </CardContent>
       </Card>

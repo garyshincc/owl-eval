@@ -54,6 +54,9 @@ export default function OrganizationExperimentsPage() {
         throw new Error('No organization selected');
       }
 
+      console.log('🔍 [DEBUG] Experiments page - Current organization:', currentOrganization);
+      console.log('🔍 [DEBUG] Experiments page - Making API call to:', `/api/organizations/${currentOrganization.id}/experiments`);
+      
       const response = await fetch(`/api/organizations/${currentOrganization.id}/experiments`);
       if (!response.ok) {
         throw new Error('Failed to load experiments');

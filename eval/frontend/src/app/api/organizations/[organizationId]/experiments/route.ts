@@ -14,13 +14,31 @@ export async function GET(
     }
 
     const { organizationId } = await params;
+    console.log('🔍 [DEBUG] API route - Requested organizationId:', organizationId);
+    console.log('🔍 [DEBUG] API route - User ID:', user.id);
 
     // Verify user has access to this organization
     const userOrganizations = await getUserOrganizations(user.id);
-    const hasAccess = userOrganizations.some(org => org.id === organizationId);
+    console.log('🔍 [DEBUG] API route - User organizations:', userOrganizations.map(org => ({ 
+      membershipId: org.id,
+      organizationId: org.organization.id, 
+      name: org.organization.name, 
+      slug: org.organization.slug,
+      role: org.role 
+    })));
+    
+    const hasAccess = userOrganizations.some(org => org.organization.id === organizationId);
+    console.log('🔍 [DEBUG] API route - Has access:', hasAccess);
 
     if (!hasAccess) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      console.error('❌ [DEBUG] Access denied - User does not have access to organization:', organizationId);
+      return NextResponse.json({ 
+        error: 'Access denied',
+        debug: {
+          requestedOrgId: organizationId,
+          userOrgs: userOrganizations.map(org => org.id)
+        }
+      }, { status: 403 });
     }
 
     // Get experiments for the organization
@@ -55,7 +73,7 @@ export async function POST(
 
     // Verify user has access to this organization
     const userOrganizations = await getUserOrganizations(user.id);
-    const userOrgMembership = userOrganizations.find(org => org.id === organizationId);
+    const userOrgMembership = userOrganizations.find(org => org.organization.id === organizationId);
 
     if (!userOrgMembership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });

@@ -1,12 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { Experiment, EvaluationMode } from '@prisma/client';
+import { Experiment } from '@prisma/client';
 import { ExperimentStatus } from '@/lib/utils/status';
 
 export interface CreateExperimentData {
   name: string;
   description?: string;
-  evaluationMode: EvaluationMode;
+  evaluationMode: string;
   config: any;
   organizationId: string;
 }
@@ -59,17 +59,8 @@ export class ExperimentService {
         organizationId,
       },
       include: {
-        twoVideoComparisonTasks: {
-          include: {
-            videoA: true,
-            videoB: true,
-          },
-        },
-        singleVideoEvaluationTasks: {
-          include: {
-            video: true,
-          },
-        },
+        twoVideoComparisonTasks: true,
+        singleVideoEvaluationTasks: true,
         participants: true,
         _count: {
           select: {

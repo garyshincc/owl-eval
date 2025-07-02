@@ -17,7 +17,7 @@ export async function GET(
 
     // Verify user has access to this organization
     const userOrganizations = await getUserOrganizations(user.id);
-    const hasAccess = userOrganizations.some(org => org.id === organizationId);
+    const hasAccess = userOrganizations.some(org => org.organization.id === organizationId);
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
