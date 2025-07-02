@@ -51,7 +51,14 @@ interface StatsDashboardProps {
   onGroupChange?: (group: string | null) => void
 }
 
-export function StatsDashboard({ stats, experiments, evaluationStatus, loading, selectedGroup, onGroupChange }: StatsDashboardProps) {
+export function StatsDashboard({ 
+  stats, 
+  experiments, 
+  evaluationStatus, 
+  loading, 
+  selectedGroup, 
+  onGroupChange
+}: StatsDashboardProps) {
   const [localSelectedGroup, setLocalSelectedGroup] = useState<string | null>(selectedGroup || null)
   
   const handleGroupChange = (group: string | null) => {

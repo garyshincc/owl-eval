@@ -24,7 +24,9 @@ export class ExperimentService {
    * Get all experiments for an organization
    */
   static async getExperimentsByOrganization(organizationId: string) {
-    return await prisma.experiment.findMany({
+    console.log('🔍 [DEBUG] ExperimentService - Querying experiments for organizationId:', organizationId);
+    
+    const experiments = await prisma.experiment.findMany({
       where: {
         organizationId,
         archived: false,
@@ -44,6 +46,9 @@ export class ExperimentService {
         createdAt: 'desc',
       },
     });
+
+    console.log('🔍 [DEBUG] ExperimentService - Found experiments:', experiments.map(exp => ({ id: exp.id, name: exp.name, organizationId: exp.organizationId })));
+    return experiments;
   }
 
   /**

@@ -56,35 +56,14 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
         role: membership.role,
       }));
       
-      console.log('🔍 [DEBUG] Context - Fetched organizations:', userOrgs);
       setOrganizations(userOrgs);
       
-      // Auto-select organization based on URL slug, stored preference, or first available
-      const currentPath = window.location.pathname;
-      const urlOrgSlug = currentPath.match(/^\/([^\/]+)\//)?.[1];
+      // Auto-select organization based on stored preference or first available
+      const storedOrgId = localStorage.getItem('currentOrganizationId');
+      const targetOrg = storedOrgId 
+        ? userOrgs.find((org: Organization) => org.id === storedOrgId)
+        : userOrgs[0];
       
-      console.log('🔍 [DEBUG] Context - Current path:', currentPath);
-      console.log('🔍 [DEBUG] Context - URL org slug:', urlOrgSlug);
-      console.log('🔍 [DEBUG] Context - Available organization IDs:', userOrgs.map(org => org.id));
-      
-      let targetOrg: Organization | undefined;
-      
-      // First try to match URL slug
-      if (urlOrgSlug) {
-        targetOrg = userOrgs.find((org: Organization) => org.slug === urlOrgSlug);
-        console.log('🔍 [DEBUG] Context - Found org by URL slug:', targetOrg?.name);
-      }
-      
-      // Fallback to stored preference
-      if (!targetOrg) {
-        const storedOrgId = localStorage.getItem('currentOrganizationId');
-        console.log('🔍 [DEBUG] Context - Stored org ID:', storedOrgId);
-        targetOrg = storedOrgId 
-          ? userOrgs.find((org: Organization) => org.id === storedOrgId)
-          : userOrgs[0];
-      }
-      
-      console.log('🔍 [DEBUG] Context - Target organization:', targetOrg);
       if (targetOrg) {
         setCurrentOrganization(targetOrg);
         localStorage.setItem('currentOrganizationId', targetOrg.id);
@@ -103,16 +82,14 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   // Switch to different organization
   const switchOrganization = (organizationId: string) => {
-    console.log('🔍 [DEBUG] Context - Switching to organization:', organizationId);
     const organization = organizations.find(org => org.id === organizationId);
-    console.log('🔍 [DEBUG] Context - Found organization:', organization);
     if (organization) {
       setSwitching(true);
+      setCurrentOrganization(organization);
       localStorage.setItem('currentOrganizationId', organizationId);
-      console.log('🔍 [DEBUG] Context - Redirecting to:', `/${organization.slug}/dashboard`);
       
-      // Use Next.js router for client-side navigation without setting state first
-      router.push(`/${organization.slug}/dashboard`);
+      // Stay on the current page - don't redirect
+      setSwitching(false);
     }
   };
 
