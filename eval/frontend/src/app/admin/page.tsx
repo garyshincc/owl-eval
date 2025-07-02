@@ -585,7 +585,6 @@ export default function AdminPage() {
               onRefresh={fetchAllData}
               selectedExperiment={selectedExperiment}
               onExperimentChange={setSelectedExperiment}
-              includeAnonymous={includeAnonymous}
             />
           </TabsContent>
           
