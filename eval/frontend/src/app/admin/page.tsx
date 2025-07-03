@@ -591,7 +591,7 @@ export default function AdminPage() {
           </TabsContent>
           
           <TabsContent value="demographics">
-            <DemographicsDashboard />
+            <DemographicsDashboard currentOrganization={currentOrganization} />
           </TabsContent>
           
           <TabsContent value="tools">
