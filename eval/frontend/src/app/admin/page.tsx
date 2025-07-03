@@ -139,7 +139,7 @@ export default function AdminPage() {
     process.env.NEXT_PUBLIC_STACK_PROJECT_ID && 
     process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
 
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     if (!currentOrganization) {
       return;
     }
@@ -153,7 +153,7 @@ export default function AdminPage() {
         fetch(`/api/organizations/${currentOrganization.id}/submission-stats${queryString}`),
         fetch(`/api/organizations/${currentOrganization.id}/submission-status${queryString}`),
         fetch(`/api/organizations/${currentOrganization.id}/model-performance${queryString}`),
-        fetch(`/api/organizations/${currentOrganization.id}/experiments`),
+        fetch(`/api/organizations/${currentOrganization.id}/experiments${queryString}`),
         fetch(`/api/organizations/${currentOrganization.id}/two-video-comparison-progress${queryString}`)
       ])
       
@@ -193,13 +193,13 @@ export default function AdminPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [currentOrganization, selectedGroup, includeAnonymous])
 
   useEffect(() => {
     if (currentOrganization) {
       fetchAllData()
     }
-  }, [currentOrganization, selectedGroup, includeAnonymous])
+  }, [currentOrganization, selectedGroup, includeAnonymous, fetchAllData])
   
   useEffect(() => {
     if (!currentOrganization) return;
@@ -213,9 +213,9 @@ export default function AdminPage() {
     return () => {
       clearInterval(dataInterval)
     }
-  }, [currentOrganization])
+  }, [currentOrganization, fetchAllData])
 
-  const fetchVideoLibrary = async () => {
+  const fetchVideoLibrary = useCallback(async () => {
     if (!currentOrganization) return;
     
     try {
@@ -234,13 +234,13 @@ export default function AdminPage() {
     } catch (error) {
       console.error('Error fetching video library:', error)
     }
-  }
+  }, [currentOrganization])
 
   useEffect(() => {
     if (currentOrganization) {
       fetchVideoLibrary()
     }
-  }, [currentOrganization])
+  }, [currentOrganization, fetchVideoLibrary])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -524,6 +524,7 @@ export default function AdminPage() {
               loading={refreshing}
               selectedGroup={selectedGroup}
               onGroupChange={setSelectedGroup}
+              includeAnonymous={includeAnonymous}
             />
             <ProgressTracker 
               stats={stats}

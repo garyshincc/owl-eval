@@ -23,20 +23,48 @@ export class ExperimentService {
   /**
    * Get all experiments for an organization
    */
-  static async getExperimentsByOrganization(organizationId: string) {
-    console.log('🔍 [DEBUG] ExperimentService - Querying experiments for organizationId:', organizationId);
+  static async getExperimentsByOrganization(
+    organizationId: string, 
+    options?: { groupFilter?: string | null; includeAnonymous?: boolean }
+  ) {
+    const { groupFilter, includeAnonymous = false } = options || {};
+    
+    // Build participant filter based on includeAnonymous setting
+    const participantFilter = includeAnonymous ? {
+      status: {
+        not: 'returned'  // Always exclude returned participants
+      }
+    } : {
+      AND: [
+        {
+          id: {
+            not: {
+              startsWith: 'anon-session-'
+            }
+          }
+        },
+        {
+          status: {
+            not: 'returned'  // Always exclude returned participants
+          }
+        }
+      ]
+    };
     
     const experiments = await prisma.experiment.findMany({
       where: {
         organizationId,
         archived: false,
+        ...(groupFilter && { group: groupFilter }),
       },
       include: {
         _count: {
           select: {
             twoVideoComparisonTasks: true,
             singleVideoEvaluationTasks: true,
-            participants: true,
+            participants: {
+              where: participantFilter
+            },
             twoVideoComparisonSubmissions: true,
             singleVideoEvaluationSubmissions: true,
           },
@@ -47,7 +75,6 @@ export class ExperimentService {
       },
     });
 
-    console.log('🔍 [DEBUG] ExperimentService - Found experiments:', experiments.map(exp => ({ id: exp.id, name: exp.name, organizationId: exp.organizationId })));
     return experiments;
   }
 

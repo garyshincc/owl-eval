@@ -23,8 +23,16 @@ export async function GET(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
+    // Get filters from URL params
+    const { searchParams } = new URL(request.url);
+    const groupFilter = searchParams.get('group');
+    const includeAnonymous = searchParams.get('includeAnonymous') === 'true';
+
     // Get experiments for the organization
-    const experiments = await ExperimentService.getExperimentsByOrganization(organizationId);
+    const experiments = await ExperimentService.getExperimentsByOrganization(organizationId, { 
+      groupFilter, 
+      includeAnonymous 
+    });
     const stats = await ExperimentService.getOrganizationExperimentStats(organizationId);
 
     return NextResponse.json({

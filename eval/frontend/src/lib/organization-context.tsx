@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
 
@@ -32,7 +32,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [switching, setSwitching] = useState(false);
 
   // Fetch user's organizations
-  const fetchOrganizations = async () => {
+  const fetchOrganizations = useCallback(async () => {
     if (!user?.id) {
       setOrganizations([]);
       setCurrentOrganization(null);
@@ -78,7 +78,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id]);
 
   // Switch to different organization
   const switchOrganization = (organizationId: string) => {
@@ -102,7 +102,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   // Fetch organizations when user changes
   useEffect(() => {
     fetchOrganizations();
-  }, [user?.id]); // fetchOrganizations is stable, ok to omit
+  }, [user?.id, fetchOrganizations]);
 
   return (
     <OrganizationContext.Provider 

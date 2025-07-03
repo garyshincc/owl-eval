@@ -49,6 +49,7 @@ interface StatsDashboardProps {
   loading?: boolean
   selectedGroup?: string | null
   onGroupChange?: (group: string | null) => void
+  includeAnonymous?: boolean
 }
 
 export function StatsDashboard({ 
@@ -57,7 +58,8 @@ export function StatsDashboard({
   evaluationStatus, 
   loading, 
   selectedGroup, 
-  onGroupChange
+  onGroupChange,
+  includeAnonymous = false
 }: StatsDashboardProps) {
   const [localSelectedGroup, setLocalSelectedGroup] = useState<string | null>(selectedGroup || null)
   
@@ -237,17 +239,15 @@ export function StatsDashboard({
                     .sort(([,a], [,b]) => b - a)
                     .slice(0, 5)
                     .map(([scenario, count]) => (
-                      <div key={scenario} className="flex items-center justify-between text-sm">
-                        <span className="truncate flex-1">{scenario}</span>
-                        <div className="flex items-center gap-2">
+                      <div key={scenario} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="truncate flex-1">{scenario}</span>
                           <span className="font-medium">{count}</span>
-                          <div className="w-16 bg-muted rounded-full h-2">
-                            <div 
-                              className="bg-primary h-2 rounded-full" 
-                              style={{ width: `${(count / (overallProgress.totalEvaluations || 1)) * 100}%` }}
-                            />
-                          </div>
                         </div>
+                        <Progress 
+                          value={(count / (overallProgress.totalEvaluations || 1)) * 100} 
+                          className="h-2 w-full" 
+                        />
                       </div>
                     ))}
                 </div>
