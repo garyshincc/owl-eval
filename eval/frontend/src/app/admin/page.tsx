@@ -586,6 +586,7 @@ export default function AdminPage() {
               onRefresh={fetchAllData}
               selectedExperiment={selectedExperiment}
               onExperimentChange={setSelectedExperiment}
+              currentOrganization={currentOrganization}
             />
           </TabsContent>
           

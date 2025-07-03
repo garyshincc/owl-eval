@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const includeAnonymous = searchParams.get('includeAnonymous') === 'true'
+    const organizationId = searchParams.get('organizationId')
     
     // Build where clause based on whether to include anonymous participants
     const whereClause = includeAnonymous ? {
@@ -26,6 +27,14 @@ export async function GET(request: NextRequest) {
           }
         }
       ]
+    }
+    
+    // Add organization filtering if provided
+    if (organizationId) {
+      whereClause.experiment = {
+        organizationId,
+        archived: false
+      }
     }
     
     // Fetch participants with their demographics and experiment data
