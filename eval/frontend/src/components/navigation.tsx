@@ -131,9 +131,9 @@ function UserMenu({ user }: { user: any }) {
         <DropdownMenuSeparator />
         
         <DropdownMenuItem asChild>
-          <Link href="/profile" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            Profile Settings
+          <Link href="/handler/account-settings" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Account Settings
           </Link>
         </DropdownMenuItem>
         
