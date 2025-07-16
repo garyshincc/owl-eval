@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Build where clause based on whether to include anonymous participants
-    const whereClause = includeAnonymous ? {
+    let whereClause: any = includeAnonymous ? {
       status: {
         not: 'returned'  // Always exclude returned participants
       }

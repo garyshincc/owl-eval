@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false, // Temporarily disable for debugging
   output: 'standalone',
   images: {
     domains: ['localhost'],

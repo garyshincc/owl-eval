@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const organizationId = searchParams.get('organizationId')
     
     // Build where clause based on whether to include anonymous participants
-    const whereClause = includeAnonymous ? {
+    let whereClause: any = includeAnonymous ? {
       status: {
         not: 'returned'  // Always exclude returned participants
       }

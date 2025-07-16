@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env tsx
 
 import { Command } from 'commander';
 import { generateSlug, isValidSlug, slugify } from '../frontend/src/lib/utils/slug';
@@ -10,6 +10,8 @@ import * as dotenv from 'dotenv';
 import { requireAuth, clearAuth } from './auth';
 import { prisma } from './prisma-client';
 import { prolificService } from '../frontend/src/lib/services/prolific';
+import { ExperimentService } from '../frontend/src/lib/experiment-service';
+import { getUserOrganizations } from './cli-organization';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../frontend/.env.local') });
@@ -28,6 +30,45 @@ function getReadline() {
     question = promisify(rl.question).bind(rl);
   }
   return { rl, question };
+}
+
+// Helper function to select organization for CLI operations
+async function selectOrganization(auth: any): Promise<string> {
+  const userOrganizations = await getUserOrganizations(auth.id);
+  
+  if (userOrganizations.length === 0) {
+    console.log(chalk.red('❌ No organizations found. You need to create or join an organization first.'));
+    process.exit(1);
+  }
+  
+  if (userOrganizations.length === 1) {
+    const org = userOrganizations[0].organization;
+    console.log(chalk.gray(`Using organization: ${chalk.cyan(org.name)} (${org.slug})`));
+    return org.id;
+  }
+  
+  // Multiple organizations - let user choose
+  console.log(chalk.blue('\n📋 Select an organization:\n'));
+  userOrganizations.forEach((membership, index) => {
+    const org = membership.organization;
+    console.log(chalk.white(`${index + 1}. ${org.name} (${org.slug}) - ${membership.role}`));
+  });
+  
+  const { rl, question } = getReadline();
+  const choice = await question(chalk.cyan('\nEnter organization number: '));
+  const index = parseInt(choice) - 1;
+  
+  // Close readline interface
+  rl.close();
+  
+  if (index < 0 || index >= userOrganizations.length) {
+    console.log(chalk.red('❌ Invalid selection'));
+    process.exit(1);
+  }
+  
+  const selectedOrg = userOrganizations[index].organization;
+  console.log(chalk.gray(`Selected: ${chalk.cyan(selectedOrg.name)}\n`));
+  return selectedOrg.id;
 }
 
 const program = new Command();
@@ -162,26 +203,22 @@ program
 // List experiments command
 program
   .command('list')
-  .description('List all experiments')
+  .description('List experiments in your organization')
   .option('-s, --status <status>', 'Filter by status (draft, active, completed, archived)')
+  .option('-g, --group <group>', 'Filter by group')
+  .option('--include-anonymous', 'Include anonymous participants in counts')
   .action(async (options) => {
-    try {
-      const where = options.status ? { status: options.status } : {};
-      const experiments = await prisma.experiment.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          _count: {
-            select: {
-              comparisons: true,
-              videoTasks: true,
-              participants: true,
-              evaluations: true,
-              singleVideoEvals: true,
-            }
+    await requireAuth('list experiments', async (auth) => {
+      try {
+        const organizationId = await selectOrganization(auth);
+        
+        const experiments = await ExperimentService.getExperimentsByOrganization(
+          organizationId,
+          {
+            groupFilter: options.group,
+            includeAnonymous: options.includeAnonymous
           }
-        }
-      });
+        );
       
       console.log(chalk.blue.bold('\n📋 Experiments\n'));
       
@@ -205,11 +242,11 @@ program
           console.log(chalk.gray(`  Created: ${exp.createdAt.toLocaleDateString()}`));
           
           if (exp.evaluationMode === 'single_video') {
-            console.log(chalk.gray(`  Video Tasks: ${exp._count.videoTasks}`));
-            console.log(chalk.gray(`  Single Video Evaluations: ${exp._count.singleVideoEvals}`));
+            console.log(chalk.gray(`  Video Tasks: ${exp._count.singleVideoEvaluationTasks}`));
+            console.log(chalk.gray(`  Single Video Evaluations: ${exp._count.singleVideoEvaluationSubmissions}`));
           } else {
-            console.log(chalk.gray(`  Comparisons: ${exp._count.comparisons}`));
-            console.log(chalk.gray(`  Evaluations: ${exp._count.evaluations}`));
+            console.log(chalk.gray(`  Comparisons: ${exp._count.twoVideoComparisonTasks}`));
+            console.log(chalk.gray(`  Evaluations: ${exp._count.twoVideoComparisonSubmissions}`));
           }
           console.log(chalk.gray(`  Participants: ${exp._count.participants}`));
           
@@ -219,11 +256,10 @@ program
           console.log();
         });
       }
-    } catch (error) {
-      console.error(chalk.red('Error listing experiments:'), error);
-    } finally {
-      await prisma.$disconnect();
-    }
+      } catch (error) {
+        console.error(chalk.red('Error listing experiments:'), error);
+      }
+    });
   });
 
 // Launch experiment command
@@ -244,7 +280,7 @@ program
           include: {
             _count: {
               select: {
-                comparisons: true
+                twoVideoComparisonTasks: true
               }
             }
           }
@@ -377,20 +413,20 @@ program
         include: {
           _count: {
             select: {
-              comparisons: true,
-              videoTasks: true,
+              twoVideoComparisonTasks: true,
+              singleVideoEvaluationTasks: true,
               participants: true,
-              evaluations: true,
-              singleVideoEvals: true,
+              twoVideoComparisonSubmissions: true,
+              singleVideoEvaluationSubmissions: true,
             }
           },
-          evaluations: {
+          twoVideoComparisonSubmissions: {
             select: {
               dimensionScores: true,
               completionTimeSeconds: true,
             }
           },
-          singleVideoEvals: {
+          singleVideoEvaluationSubmissions: {
             select: {
               dimensionScores: true,
               completionTimeSeconds: true,
@@ -410,41 +446,41 @@ program
       console.log(chalk.white('Total Participants:'), chalk.yellow(experiment._count.participants));
       
       if (experiment.evaluationMode === 'single_video') {
-        console.log(chalk.white('Total Video Tasks:'), chalk.yellow(experiment._count.videoTasks));
-        console.log(chalk.white('Total Single Video Evaluations:'), chalk.yellow(experiment._count.singleVideoEvals));
+        console.log(chalk.white('Total Video Tasks:'), chalk.yellow(experiment._count.singleVideoEvaluationTasks));
+        console.log(chalk.white('Total Single Video Evaluations:'), chalk.yellow(experiment._count.singleVideoEvaluationSubmissions));
         
-        if (experiment._count.videoTasks > 0) {
+        if (experiment._count.singleVideoEvaluationTasks > 0) {
           const avgEvaluationsPerTask = 
-            experiment._count.singleVideoEvals / experiment._count.videoTasks;
+            experiment._count.singleVideoEvaluationSubmissions / experiment._count.singleVideoEvaluationTasks;
           console.log(chalk.white('Avg Evaluations/Task:'), 
             chalk.yellow(avgEvaluationsPerTask.toFixed(2)));
         }
         
-        if (experiment.singleVideoEvals.length > 0) {
-          const avgCompletionTime = experiment.singleVideoEvals
+        if (experiment.singleVideoEvaluationSubmissions.length > 0) {
+          const avgCompletionTime = experiment.singleVideoEvaluationSubmissions
             .filter(e => e.completionTimeSeconds)
             .reduce((sum, e) => sum + (e.completionTimeSeconds || 0), 0) / 
-            experiment.singleVideoEvals.filter(e => e.completionTimeSeconds).length;
+            experiment.singleVideoEvaluationSubmissions.filter(e => e.completionTimeSeconds).length;
           
           console.log(chalk.white('Avg Completion Time:'), 
             chalk.yellow(`${(avgCompletionTime / 60).toFixed(1)} minutes`));
         }
       } else {
-        console.log(chalk.white('Total Comparisons:'), chalk.yellow(experiment._count.comparisons));
-        console.log(chalk.white('Total Evaluations:'), chalk.yellow(experiment._count.evaluations));
+        console.log(chalk.white('Total Comparisons:'), chalk.yellow(experiment._count.twoVideoComparisonTasks));
+        console.log(chalk.white('Total Evaluations:'), chalk.yellow(experiment._count.twoVideoComparisonSubmissions));
         
-        if (experiment._count.comparisons > 0) {
+        if (experiment._count.twoVideoComparisonTasks > 0) {
           const avgEvaluationsPerComparison = 
-            experiment._count.evaluations / experiment._count.comparisons;
+            experiment._count.twoVideoComparisonSubmissions / experiment._count.twoVideoComparisonTasks;
           console.log(chalk.white('Avg Evaluations/Comparison:'), 
             chalk.yellow(avgEvaluationsPerComparison.toFixed(2)));
         }
         
-        if (experiment.evaluations.length > 0) {
-          const avgCompletionTime = experiment.evaluations
+        if (experiment.twoVideoComparisonSubmissions.length > 0) {
+          const avgCompletionTime = experiment.twoVideoComparisonSubmissions
             .filter(e => e.completionTimeSeconds)
             .reduce((sum, e) => sum + (e.completionTimeSeconds || 0), 0) / 
-            experiment.evaluations.filter(e => e.completionTimeSeconds).length;
+            experiment.twoVideoComparisonSubmissions.filter(e => e.completionTimeSeconds).length;
           
           console.log(chalk.white('Avg Completion Time:'), 
             chalk.yellow(`${(avgCompletionTime / 60).toFixed(1)} minutes`));
@@ -1059,7 +1095,7 @@ program
         const experiment = await prisma.experiment.findUnique({
           where: { slug: experimentSlug },
           include: {
-            _count: { select: { comparisons: true } }
+            _count: { select: { twoVideoComparisonTasks: true } }
           }
         });
         
@@ -1090,8 +1126,8 @@ program
         
         console.log(chalk.gray('\n📊 Study Summary:'));
         console.log(chalk.gray(`  Experiment: ${experiment.name} (${experimentSlug})`));
-        console.log(chalk.gray(`  Comparisons: ${experiment._count.comparisons}`));
-        console.log(chalk.gray(`  Estimated time: ~${Math.ceil(experiment._count.comparisons * 2)} minutes`));
+        console.log(chalk.gray(`  Comparisons: ${experiment._count.twoVideoComparisonTasks}`));
+        console.log(chalk.gray(`  Estimated time: ~${Math.ceil(experiment._count.twoVideoComparisonTasks * 2)} minutes`));
         console.log(chalk.gray(`  Reward: $${reward.toFixed(2)}`));
         console.log(chalk.gray(`  Participants: ${totalParticipants}`));
         console.log(chalk.gray(`  Total cost: ~$${(reward * totalParticipants).toFixed(2)} (+ Prolific fees)`));
@@ -1441,9 +1477,9 @@ program
         include: {
           _count: {
             select: {
-              comparisons: true,
+              twoVideoComparisonTasks: true,
               participants: true,
-              evaluations: true
+              twoVideoComparisonSubmissions: true
             }
           }
         }
@@ -1457,40 +1493,40 @@ program
       console.log(chalk.blue.bold('\n🔍 Progress Debug for "' + experiment.name + '"\n'));
       
       console.log(chalk.white('Database Counts:'));
-      console.log(chalk.gray(`  Comparisons: ${experiment._count.comparisons}`));
+      console.log(chalk.gray(`  Comparisons: ${experiment._count.twoVideoComparisonTasks}`));
       console.log(chalk.gray(`  Participants: ${experiment._count.participants}`));
-      console.log(chalk.gray(`  Evaluations: ${experiment._count.evaluations}`));
+      console.log(chalk.gray(`  Evaluations: ${experiment._count.twoVideoComparisonSubmissions}`));
       
       console.log(chalk.white('\nExperiment Config:'));
       console.log(chalk.gray(JSON.stringify(experiment.config, null, 2)));
       
       // Calculate progress the same way the frontend does
       const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || 5;
-      const targetEvaluations = experiment._count.comparisons * evaluationsPerComparison;
-      const progressPercentage = Math.min((experiment._count.evaluations / targetEvaluations) * 100, 100);
+      const targetEvaluations = experiment._count.twoVideoComparisonTasks * evaluationsPerComparison;
+      const progressPercentage = Math.min((experiment._count.twoVideoComparisonSubmissions / targetEvaluations) * 100, 100);
       
       console.log(chalk.white('\nProgress Calculation:'));
       console.log(chalk.gray(`  evaluationsPerComparison from config: ${experiment.config?.evaluationsPerComparison}`));
       console.log(chalk.gray(`  evaluationsPerComparison used: ${evaluationsPerComparison}`));
-      console.log(chalk.gray(`  targetEvaluations: ${experiment._count.comparisons} × ${evaluationsPerComparison} = ${targetEvaluations}`));
-      console.log(chalk.gray(`  actual evaluations: ${experiment._count.evaluations}`));
-      console.log(chalk.yellow(`  progressPercentage: ${experiment._count.evaluations}/${targetEvaluations} = ${Math.round(progressPercentage)}%`));
+      console.log(chalk.gray(`  targetEvaluations: ${experiment._count.twoVideoComparisonTasks} × ${evaluationsPerComparison} = ${targetEvaluations}`));
+      console.log(chalk.gray(`  actual evaluations: ${experiment._count.twoVideoComparisonSubmissions}`));
+      console.log(chalk.yellow(`  progressPercentage: ${experiment._count.twoVideoComparisonSubmissions}/${targetEvaluations} = ${Math.round(progressPercentage)}%`));
       
-      if (progressPercentage !== 100 && experiment._count.evaluations > 0) {
+      if (progressPercentage !== 100 && experiment._count.twoVideoComparisonSubmissions > 0) {
         console.log(chalk.red('\n⚠️  Progress is not 100%. Possible issues:'));
         if (!experiment.config?.evaluationsPerComparison) {
           console.log(chalk.red('  - Missing evaluationsPerComparison in config (defaulting to 5)'));
           
           // Auto-fix suggestion
-          if (experiment._count.comparisons > 0) {
-            const actualEvaluationsPerComparison = Math.round(experiment._count.evaluations / experiment._count.comparisons);
+          if (experiment._count.twoVideoComparisonTasks > 0) {
+            const actualEvaluationsPerComparison = Math.round(experiment._count.twoVideoComparisonSubmissions / experiment._count.twoVideoComparisonTasks);
             console.log(chalk.yellow(`\n💡 Auto-fix suggestion:`));
             console.log(chalk.yellow(`  Based on current data, this experiment appears to need ${actualEvaluationsPerComparison} evaluations per comparison`));
             console.log(chalk.yellow(`  Run: npm run experiment -- fix-config ${slug} --evaluations-per-comparison ${actualEvaluationsPerComparison}`));
           }
         }
-        if (experiment._count.evaluations < targetEvaluations) {
-          console.log(chalk.red(`  - Need ${targetEvaluations - experiment._count.evaluations} more evaluations`));
+        if (experiment._count.twoVideoComparisonSubmissions < targetEvaluations) {
+          console.log(chalk.red(`  - Need ${targetEvaluations - experiment._count.twoVideoComparisonSubmissions} more evaluations`));
         }
       }
       
@@ -1544,6 +1580,150 @@ program
   });
 
 // Logout command
+// Database management commands
+program
+  .command('db:tables')
+  .description('List all database tables')
+  .action(async () => {
+    await requireAuth('view database tables', async () => {
+      try {
+        const result = await prisma.$queryRaw`
+          SELECT 
+            table_name,
+            COALESCE(obj_description(c.oid), '') as comment
+          FROM information_schema.tables t
+          LEFT JOIN pg_class c ON c.relname = t.table_name
+          WHERE table_schema = 'public'
+          AND table_type = 'BASE TABLE'
+          ORDER BY table_name
+        `;
+        
+        console.log(chalk.blue.bold('\n📋 Database Tables\n'));
+        if (Array.isArray(result) && result.length > 0) {
+          result.forEach((table: any) => {
+            console.log(chalk.white(`• ${table.table_name}`) + 
+              (table.comment ? chalk.gray(` - ${table.comment}`) : ''));
+          });
+        } else {
+          console.log(chalk.gray('No tables found'));
+        }
+      } catch (error) {
+        console.error(chalk.red('Error listing tables:'), error);
+      }
+    });
+  });
+
+program
+  .command('db:count')
+  .description('Count records in database tables')
+  .option('-t, --table <table>', 'Specific table to count')
+  .action(async (options) => {
+    await requireAuth('view database counts', async () => {
+      try {
+        if (options.table) {
+          // Count specific table
+          const result = await prisma.$queryRawUnsafe(`SELECT COUNT(*) as count FROM "${options.table}"`);
+          const count = Array.isArray(result) ? result[0]?.count : 0;
+          console.log(chalk.blue(`📊 ${options.table}: ${Number(count).toLocaleString()} records`));
+        } else {
+          // Count all main tables
+          console.log(chalk.blue.bold('\n📊 Record Counts\n'));
+          
+          const tables = [
+            'Experiment',
+            'TwoVideoComparisonTask', 
+            'TwoVideoComparisonSubmission',
+            'SingleVideoEvaluationTask',
+            'SingleVideoEvaluationSubmission',
+            'Participant',
+            'Video',
+            'organizations',
+            'organization_members'
+          ];
+          
+          for (const table of tables) {
+            try {
+              const result = await prisma.$queryRawUnsafe(`SELECT COUNT(*) as count FROM "${table}"`);
+              const count = Array.isArray(result) ? result[0]?.count : 0;
+              console.log(chalk.white(`${table}: `) + chalk.yellow(Number(count).toLocaleString()));
+            } catch (error) {
+              console.log(chalk.white(`${table}: `) + chalk.red('Error'));
+            }
+          }
+        }
+      } catch (error) {
+        console.error(chalk.red('Error counting records:'), error);
+      }
+    });
+  });
+
+// Storage management commands
+program
+  .command('storage:list')
+  .description('List objects in cloud storage')
+  .option('-p, --prefix <prefix>', 'Filter by prefix (e.g., experiments/)', '')
+  .option('-b, --bucket <bucket>', 'Bucket name (uses env TIGRIS_BUCKET_NAME if not specified)')
+  .option('-d, --detailed', 'Show detailed information')
+  .action(async (options) => {
+    await requireAuth('view storage', async () => {
+      try {
+        const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+        
+        const client = new S3Client({
+          endpoint: process.env.AWS_ENDPOINT_URL_S3 || 'https://fly.storage.tigris.dev',
+          region: process.env.AWS_REGION || 'auto',
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+          },
+        });
+        
+        const bucketName = options.bucket || process.env.TIGRIS_BUCKET_NAME || 'eval-data';
+        
+        console.log(chalk.blue.bold(`\n📁 Listing objects in bucket '${bucketName}'`));
+        if (options.prefix) {
+          console.log(chalk.gray(`   with prefix '${options.prefix}'`));
+        }
+        console.log();
+        
+        const command = new ListObjectsV2Command({
+          Bucket: bucketName,
+          Prefix: options.prefix,
+        });
+        
+        const response = await client.send(command);
+        
+        if (!response.Contents || response.Contents.length === 0) {
+          console.log(chalk.gray('No objects found'));
+          return;
+        }
+        
+        let totalSize = 0;
+        
+        response.Contents.forEach((obj) => {
+          const sizeMB = (obj.Size || 0) / (1024 * 1024);
+          totalSize += obj.Size || 0;
+          
+          if (options.detailed) {
+            const modified = obj.LastModified?.toISOString().slice(0, 16).replace('T', ' ') || 'Unknown';
+            console.log(chalk.white(`${obj.Key}`));
+            console.log(chalk.gray(`  Size: ${sizeMB.toFixed(2)} MB`));
+            console.log(chalk.gray(`  Modified: ${modified}`));
+            console.log(chalk.gray(`  Storage: ${obj.StorageClass || 'STANDARD'}`));
+            console.log();
+          } else {
+            console.log(chalk.white(`${obj.Key} `) + chalk.yellow(`(${sizeMB.toFixed(2)} MB)`));
+          }
+        });
+        
+        console.log(chalk.blue(`\n📊 Total: ${response.Contents.length} objects, ${(totalSize / (1024 * 1024)).toFixed(2)} MB`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error listing storage objects:'), error);
+      }
+    });
+  });
+
 program
   .command('logout')
   .description('Clear stored authentication')
@@ -1551,4 +1731,38 @@ program
     await clearAuth();
   });
 
+// Cleanup function
+async function cleanup() {
+  try {
+    await prisma.$disconnect();
+    if (rl) {
+      rl.close();
+    }
+  } catch (error) {
+    // Ignore cleanup errors
+  }
+}
+
+// Handle process exit
+process.on('exit', () => {
+  if (rl) {
+    rl.close();
+  }
+});
+
+process.on('SIGINT', async () => {
+  await cleanup();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  await cleanup();
+  process.exit(0);
+});
+
 program.parse();
+
+// Cleanup after parsing is complete
+process.nextTick(async () => {
+  await cleanup();
+});

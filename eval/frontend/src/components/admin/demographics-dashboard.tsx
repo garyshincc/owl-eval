@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -63,7 +63,7 @@ export function DemographicsDashboard({ currentOrganization }: DemographicsDashb
   const [refreshing, setRefreshing] = useState(false)
   const [includeAnonymous, setIncludeAnonymous] = useState(false)
 
-  const fetchDemographicsData = async () => {
+  const fetchDemographicsData = useCallback(async () => {
     if (!currentOrganization) {
       setParticipants([])
       setSummary(null)
@@ -91,7 +91,7 @@ export function DemographicsDashboard({ currentOrganization }: DemographicsDashb
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [currentOrganization, includeAnonymous])
 
 
   const handleRefresh = async () => {
@@ -101,7 +101,7 @@ export function DemographicsDashboard({ currentOrganization }: DemographicsDashb
 
   useEffect(() => {
     fetchDemographicsData()
-  }, [currentOrganization, includeAnonymous])
+  }, [fetchDemographicsData])
 
   if (loading) {
     return (
