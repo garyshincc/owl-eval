@@ -12,7 +12,6 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "experiment": "tsx ../scripts/experiment-cli.ts",
     "upload-videos": "node scripts/upload-videos.js",
     "set-bucket-policy": "node scripts/set-bucket-policy.js",
     "db:studio": "prisma studio",

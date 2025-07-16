@@ -39,7 +39,6 @@ eval/
 
 ### Prerequisites
 - Node.js 18+
-- Python 3.8+ (only for generating test data)
 
 ### Installation & Running
 
@@ -100,30 +99,20 @@ Use the management scripts for various operations:
 # Install dependencies
 npm install
 
-# Experiment management
-npx tsx scripts/experiment-cli.ts create --name "My Experiment"
-npx tsx scripts/experiment-cli.ts create-bulk --models "model1,model2" --scenarios "forest,desert"
-npx tsx scripts/experiment-cli.ts launch my-experiment-slug --prolific
-
-# Database management
-npx tsx scripts/db-manage.ts status
-npx tsx scripts/db-manage.ts count
-
-# Video management
-npx tsx scripts/video-manage.ts list --model genie
-npx tsx scripts/video-manage.ts bulk-edit --pattern "*forest*" --set-model genie
-
-# Storage management
-npx tsx scripts/storage-manage.ts list --prefix experiments/
+# Use the unified CLI from project root
+./evalctl list
+./evalctl create --name "My Experiment"
+./evalctl db:count
+./evalctl storage:list
 ```
 
-See [scripts/README.md](./scripts/README.md) for complete command reference.
+See [CLI Scripts Documentation](./cli-scripts.md) for complete command reference.
 
 ## Evaluation Workflow
 
-1. **Generate Comparisons** (using scripts)
-   - Create video pairs from different models using `experiment-cli.ts create-bulk`
-   - Assign videos automatically with `experiment-cli.ts assign-videos`
+1. **Generate Comparisons** (using CLI)
+   - Create video pairs from different models using `./evalctl create`
+   - Assign videos automatically with `./evalctl assign-videos`
    - Store metadata for analysis
 
 2. **Conduct Evaluations** (via web interface)
@@ -147,7 +136,7 @@ export PROLIFIC_API_TOKEN=your-token
 
 2. Create and launch a study:
 ```bash
-npx tsx scripts/experiment-cli.ts launch my-experiment-slug \
+./evalctl launch my-experiment-slug \
   --prolific \
   --prolific-participants 100 \
   --prolific-title "Matrix-Game Study"

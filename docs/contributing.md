@@ -37,10 +37,6 @@ By participating in this project, you agree to abide by our Code of Conduct:
    ```
 4. **Set up development environment**:
    ```bash
-   # Python dependencies
-   pip install -r requirements.txt
-   pip install -e .
-   
    # Frontend dependencies
    cd eval/frontend
    npm install
@@ -92,7 +88,7 @@ By participating in this project, you agree to abide by our Code of Conduct:
   - Clear description of the bug
   - Steps to reproduce
   - Expected vs actual behavior
-  - System information (OS, Python version, etc.)
+  - System information (OS, Node.js version, etc.)
   - Error messages and stack traces
 
 ### Suggesting Features
@@ -122,34 +118,6 @@ Types of contributions we welcome:
 
 ## Coding Standards
 
-### Python Code Style
-
-We follow PEP 8 with some modifications:
-
-```python
-# Good example
-def calculate_model_performance(
-    evaluations: List[Evaluation],
-    dimensions: List[str],
-    confidence_level: float = 0.95
-) -> Dict[str, float]:
-    """Calculate performance metrics for model evaluations.
-    
-    Args:
-        evaluations: List of evaluation objects
-        dimensions: Evaluation dimensions to analyze
-        confidence_level: Statistical confidence level
-        
-    Returns:
-        Dictionary mapping metrics to values
-    """
-    # Implementation here
-```
-
-Tools:
-- Use `black` for formatting: `black . --line-length 88`
-- Use `flake8` for linting: `flake8 . --max-line-length 88`
-- Use `mypy` for type checking: `mypy .`
 
 ### TypeScript/JavaScript Code Style
 
@@ -203,27 +171,6 @@ docs(api): update endpoint documentation
 
 ## Testing
 
-### Python Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=matrix_game_eval
-
-# Run specific test file
-pytest tests/test_evaluation.py
-
-# Run with verbose output
-pytest -v
-```
-
-Write tests for:
-- New features
-- Bug fixes
-- Edge cases
-- API endpoints
 
 ### Frontend Tests
 
@@ -252,8 +199,7 @@ npm run test:watch
 
 ### Code Documentation
 
-- All public functions/classes need docstrings
-- Use type hints in Python
+- All public functions/classes need documentation
 - Use TypeScript types/interfaces
 - Include usage examples for complex features
 
@@ -283,16 +229,12 @@ npm run test:watch
 
 2. **Ensure all tests pass**:
    ```bash
-   pytest
-   cd frontend && npm test
+   cd eval/frontend && npm test
    ```
 
 3. **Check code quality**:
    ```bash
-   black . --check
-   flake8 .
-   mypy .
-   cd frontend && npm run lint
+   cd eval/frontend && npm run lint
    ```
 
 4. **Update documentation** as needed
