@@ -25,7 +25,9 @@ curl -H "Authorization: Token cTwGojST_L8H72XJG089jBs50kLn5KWSqkdesISQqbsak3fStU
        -H "Content-Type: application/json" \
        https://api.prolific.com/api/v1/studies/685b58dafe8c65067db26593/submissions/
 
-python scripts/owl_eval.py postgres run-query "DELETE FROM \"Evaluation\" WHERE \"participantId\" = 'anon-session-1750816945914-ie3fzwb4n'"
+# Use database management tools or Prisma Studio for manual queries:
+# ./evalctl db:count -t TwoVideoComparisonSubmission  
+# npm run db:studio
 
 
 
