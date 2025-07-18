@@ -132,9 +132,11 @@ celerybeat.pid
 .env
 .env.local
 .env.*.local
+.env.production
 *.env
 **/.env
 **/.env.local
+**/.env.production
 
 # Python environments
 .venv

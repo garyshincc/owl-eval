@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "dotenv -e .env.local.production -- next dev",
-    "dev:test": "dotenv -e .env.local.testing -- next dev",
+    "dev": "next dev",
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "build_vercel": "prisma generate && next build",
