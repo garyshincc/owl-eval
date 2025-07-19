@@ -15,6 +15,7 @@ import { getUserOrganizations } from './cli-organization';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../frontend/.env.local') });
+dotenv.config({ path: path.join(__dirname, '../frontend/.env.development') });
 dotenv.config({ path: path.join(__dirname, '../frontend/.env') });
 
 // Create readline interface lazily to avoid conflicts with auth
@@ -1140,7 +1141,7 @@ program
         
         console.log(chalk.yellow('\n🔄 Creating study on Prolific...'));
         
-        const prolificStudy = await prolificService.createStudy({
+        const prolificStudy = await prolificService.instance.instance.createStudy({
           experimentId: experiment.id,
           title,
           description,
@@ -1176,7 +1177,7 @@ program
       try {
         console.log(chalk.blue.bold('\n🌍 Prolific Studies\n'));
         
-        const experiments = await prolificService.getExperimentsWithProlificStudies();
+        const experiments = await prolificService.instance.getExperimentsWithProlificStudies();
         
         if (experiments.length === 0) {
           console.log(chalk.gray('No experiments with Prolific studies found.'));
@@ -1187,7 +1188,7 @@ program
         
         for (const exp of experiments) {
           try {
-            const study = await prolificService.getStudy(exp.prolificStudyId!);
+            const study = await prolificService.instance.getStudy(exp.prolificStudyId!);
             
             const statusColor = {
               'UNPUBLISHED': 'gray',
@@ -1238,8 +1239,8 @@ program
         
         console.log(chalk.yellow('🔄 Fetching study status...'));
         
-        const study = await prolificService.getStudy(studyId);
-        const submissions = await prolificService.getSubmissions(studyId);
+        const study = await prolificService.instance.getStudy(studyId);
+        const submissions = await prolificService.instance.getSubmissions(studyId);
         
         const statusColor = {
           'UNPUBLISHED': 'gray',
@@ -1301,7 +1302,7 @@ program
         }
         
         // Get current status
-        const study = await prolificService.getStudy(studyId);
+        const study = await prolificService.instance.getStudy(studyId);
         
         if (study.status !== 'UNPUBLISHED') {
           console.log(chalk.yellow(`Study is already ${study.status.toLowerCase()}. Cannot publish.`));
@@ -1322,7 +1323,7 @@ program
         
         console.log(chalk.yellow('🔄 Publishing study...'));
         
-        const updatedStudy = await prolificService.updateStudyStatus(studyId, { action: 'publish' });
+        const updatedStudy = await prolificService.instance.updateStudyStatus(studyId, { action: 'publish' });
         
         console.log(chalk.green.bold('\n✅ Study published successfully!'));
         console.log(chalk.white('Status:'), chalk.green(updatedStudy.status));
@@ -1347,7 +1348,7 @@ program
         if (options.all) {
           console.log(chalk.blue.bold('\n🔄 Syncing All Prolific Studies\n'));
           
-          const experiments = await prolificService.getExperimentsWithProlificStudies();
+          const experiments = await prolificService.instance.getExperimentsWithProlificStudies();
           
           if (experiments.length === 0) {
             console.log(chalk.gray('No experiments with Prolific studies found.'));
@@ -1360,7 +1361,7 @@ program
             try {
               console.log(chalk.yellow(`📡 Syncing ${exp.name} (${exp.prolificStudyId})...`));
               
-              const result = await prolificService.syncStudyWithDatabase(exp.prolificStudyId!);
+              const result = await prolificService.instance.syncStudyWithDatabase(exp.prolificStudyId!);
               
               console.log(chalk.green(`  ✅ Synced ${result.syncedParticipants} participants`));
               console.log(chalk.gray(`  📊 Study status: ${result.study.status}`));
@@ -1386,7 +1387,7 @@ program
           console.log(chalk.blue.bold('\n🔄 Syncing Prolific Study\n'));
           console.log(chalk.yellow(`📡 Syncing study ${studyId}...`));
           
-          const result = await prolificService.syncStudyWithDatabase(studyId);
+          const result = await prolificService.instance.syncStudyWithDatabase(studyId);
           
           console.log(chalk.green.bold('\n✅ Sync complete!\n'));
           console.log(chalk.white('Study:'), chalk.yellow(result.study.name));
@@ -1759,6 +1760,78 @@ process.on('SIGTERM', async () => {
   await cleanup();
   process.exit(0);
 });
+
+// Create organization command
+program
+  .command('create-organization')
+  .description('Create a new organization and add current user as owner')
+  .option('-n, --name <name>', 'Organization name')
+  .option('-s, --slug <slug>', 'Organization slug')
+  .option('-d, --description <description>', 'Organization description')
+  .action(async (options) => {
+    try {
+      const auth = await requireAuth('create organization', async (authData) => {
+        console.log(chalk.blue('🏢 Creating a new organization...'));
+        
+        // Initialize readline
+        const rl = getReadline();
+        const question = promisify(rl.question).bind(rl);
+        
+        // Get organization details
+        const name = options.name || await question('Organization name: ');
+        const slug = options.slug || slugify(name);
+        const description = options.description || await question('Description (optional): ') || null;
+        
+        // Check if slug is available
+        const existing = await prisma.organization.findUnique({
+          where: { slug }
+        });
+        
+        if (existing) {
+          console.log(chalk.red(`❌ Organization with slug "${slug}" already exists`));
+          process.exit(1);
+        }
+        
+        // Create organization
+        const organization = await prisma.organization.create({
+          data: {
+            name,
+            slug,
+            description,
+            stackTeamId: null // Will be set when Stack Auth integration is added
+          }
+        });
+        
+        console.log(chalk.green(`✅ Created organization: ${name} (${slug})`));
+        
+        // Add current user as owner
+        await prisma.organizationMember.create({
+          data: {
+            stackUserId: authData.userId,
+            organizationId: organization.id,
+            role: 'OWNER'
+          }
+        });
+        
+        console.log(chalk.green(`✅ Added you as owner of the organization`));
+        console.log(chalk.blue(`\n🎉 Organization setup complete!`));
+        console.log(chalk.gray(`   You can now access the admin dashboard with full permissions.`));
+        
+        return organization;
+      });
+      
+      if (!auth) {
+        console.log(chalk.red('❌ Authentication failed'));
+        process.exit(1);
+      }
+      
+    } catch (error) {
+      console.error(chalk.red('❌ Failed to create organization:'), error);
+      process.exit(1);
+    } finally {
+      await cleanup();
+    }
+  });
 
 program.parse();
 

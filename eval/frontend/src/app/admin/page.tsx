@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useOrganization } from '@/lib/organization-context'
+import { useRequireOrganization } from '@/lib/organization-context'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
@@ -110,7 +110,7 @@ interface UploadedVideo {
 
 export default function AdminPage() {
   // Organization context
-  const { currentOrganization, loading: orgLoading } = useOrganization()
+  const { currentOrganization, loading: orgLoading } = useRequireOrganization()
   
   // Data state
   const [stats, setStats] = useState<EvaluationStats | null>(null)

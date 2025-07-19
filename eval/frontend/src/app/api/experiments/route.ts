@@ -105,9 +105,116 @@ async function fetchExperimentsWithRetry(retryCount = 0): Promise<any[]> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const experiments = await fetchExperimentsWithRetry();
+    // Check admin authentication
+    const authResult = await requireAdmin(request);
+    if (authResult instanceof NextResponse) {
+      return authResult;
+    }
+
+    // Get user's organization
+    let organizationId = null;
+    if (authResult.user?.id) {
+      try {
+        const { getUserOrganizations } = await import('@/lib/organization');
+        const organizations = await getUserOrganizations(authResult.user.id);
+        organizationId = organizations[0]?.organization?.id || null;
+      } catch (error) {
+        console.warn('Could not get user organization for experiment fetching:', error);
+      }
+    }
+
+    // Fetch experiments for the user's organization (or all if no organization)
+    const experiments = await prisma.experiment.findMany({
+      where: organizationId ? { organizationId } : {},
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        status: true,
+        archived: true,
+        archivedAt: true,
+        group: true,
+        prolificStudyId: true,
+        evaluationMode: true,
+        config: true,
+        createdAt: true,
+        updatedAt: true,
+        startedAt: true,
+        completedAt: true,
+        organizationId: true,
+        _count: {
+          select: {
+            twoVideoComparisonTasks: true,
+            singleVideoEvaluationTasks: true,
+            participants: {
+              where: {
+                AND: [
+                  {
+                    id: {
+                      not: {
+                        startsWith: 'anon-session-'
+                      }
+                    }
+                  },
+                  {
+                    status: {
+                      not: 'returned'  // Always exclude returned participants
+                    }
+                  }
+                ]
+              }
+            },
+            twoVideoComparisonSubmissions: {
+              where: {
+                status: 'completed',
+                participant: {
+                  AND: [
+                    {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    },
+                    {
+                      status: {
+                        not: 'returned'  // Always exclude returned participants
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            singleVideoEvaluationSubmissions: {
+              where: {
+                status: 'completed',
+                participant: {
+                  AND: [
+                    {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    },
+                    {
+                      status: {
+                        not: 'returned'  // Always exclude returned participants
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+          }
+        }
+      }
+    });
+    
     return NextResponse.json(experiments);
   } catch (error) {
     console.error('Error fetching experiments:', error);
@@ -126,6 +233,18 @@ export async function POST(request: NextRequest) {
   const authResult = await requireAdmin(request);
   if (authResult instanceof NextResponse) {
     return authResult;
+  }
+
+  // Get user's organization
+  let organizationId = null;
+  if (authResult.user?.id) {
+    try {
+      const { getUserOrganizations } = await import('@/lib/organization');
+      const organizations = await getUserOrganizations(authResult.user.id);
+      organizationId = organizations[0]?.organization?.id || null;
+    } catch (error) {
+      console.warn('Could not get user organization for experiment creation:', error);
+    }
   }
 
   try {
@@ -187,6 +306,7 @@ export async function POST(request: NextRequest) {
       group: group || null,
       status: 'draft',
       evaluationMode: evaluationMode,
+      organizationId,
       config: {
         models: evaluationMode === 'comparison' 
           ? Array.from(new Set([...comparisons.map(c => c.modelA), ...comparisons.map(c => c.modelB)]))

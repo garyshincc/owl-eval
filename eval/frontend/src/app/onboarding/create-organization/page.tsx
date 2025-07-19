@@ -49,8 +49,8 @@ export default function CreateOrganizationPage() {
 
       const result = await response.json();
       
-      // Redirect to the new organization's dashboard
-      router.push(`/${result.organization.slug}/dashboard`);
+      // Redirect to the admin dashboard
+      router.push('/admin');
       
     } catch (error) {
       console.error('Organization creation error:', error);
