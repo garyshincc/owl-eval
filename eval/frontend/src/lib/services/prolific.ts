@@ -67,7 +67,9 @@ export function generateCompletionCode(): string {
 }
 
 export class ProlificService {
-  constructor(private apiToken: string = PROLIFIC_API_TOKEN!) {
+  constructor(private apiToken?: string) {
+    // Get token from parameter or environment at runtime
+    this.apiToken = apiToken || process.env.PROLIFIC_API_TOKEN;
     if (!this.apiToken) {
       throw new Error('Prolific API token not configured');
     }
@@ -583,4 +585,13 @@ export class ProlificService {
   }
 }
 
-export const prolificService = new ProlificService();
+let _prolificService: ProlificService | null = null;
+
+export const prolificService = {
+  get instance(): ProlificService {
+    if (!_prolificService) {
+      _prolificService = new ProlificService();
+    }
+    return _prolificService;
+  }
+};
