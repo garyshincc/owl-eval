@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "eval/frontend/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "buildCommand": "npm run build_vercel"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "eval/frontend/$1"
+    }
+  ]
+}
