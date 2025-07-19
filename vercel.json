@@ -1,6 +1,0 @@
-{
-  "version": 2,
-  "installCommand": "cd eval/frontend && npm install",
-  "buildCommand": "cd eval/frontend && npm run build_vercel", 
-  "outputDirectory": "eval/frontend/.next"
-}
