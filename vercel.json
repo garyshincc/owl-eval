@@ -1,18 +1,6 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "eval/frontend/package.json",
-      "use": "@vercel/next",
-      "config": {
-        "buildCommand": "npm run build_vercel"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "eval/frontend/$1"
-    }
-  ]
+  "installCommand": "cd eval/frontend && npm install",
+  "buildCommand": "cd eval/frontend && npm run build_vercel", 
+  "outputDirectory": "eval/frontend/.next"
 }
