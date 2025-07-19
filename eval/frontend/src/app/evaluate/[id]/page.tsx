@@ -278,8 +278,6 @@ export default function EvaluatePage() {
         setComparison(comparisonData)
         setEvaluationMode('comparison')
 
-        // Debug: log the normalized comparison object
-        console.log('Loaded comparison:', comparisonData)
         if (!comparisonData.scenario_metadata) {
           console.warn('scenario_metadata is missing for comparison:', comparisonData.comparison_id)
         }

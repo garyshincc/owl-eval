@@ -14,6 +14,7 @@
     "test:coverage": "jest --coverage",
     "upload-videos": "node scripts/upload-videos.js",
     "set-bucket-policy": "node scripts/set-bucket-policy.js",
+    "copy-bucket-files": "node scripts/copy-bucket-files.js",
     "db:studio": "prisma studio",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
