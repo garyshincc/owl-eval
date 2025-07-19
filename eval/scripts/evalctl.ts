@@ -1,22 +1,32 @@
 #!/usr/bin/env tsx
 
 import { Command } from 'commander';
-import { generateSlug, isValidSlug, slugify } from '../frontend/src/lib/utils/slug';
 import * as readline from 'readline';
 import { promisify } from 'util';
 import * as path from 'path';
 import chalk from 'chalk';
 import * as dotenv from 'dotenv';
+
+// Load environment variables FIRST before any imports that use them
+// The script runs from the frontend directory via the wrapper
+dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env.development' });
+dotenv.config({ path: '.env' });
+
+import { generateSlug, isValidSlug, slugify } from '../frontend/src/lib/utils/slug';
 import { requireAuth, clearAuth } from './auth';
 import { prisma } from './prisma-client';
 import { prolificService } from '../frontend/src/lib/services/prolific';
-import { ExperimentService } from '../frontend/src/lib/experiment-service';
+// Don't import ExperimentService - it uses frontend prisma client
+// import { ExperimentService } from '../frontend/src/lib/experiment-service';
 import { getUserOrganizations } from './cli-organization';
 
-// Load environment variables
-dotenv.config({ path: path.join(__dirname, '../frontend/.env.local') });
-dotenv.config({ path: path.join(__dirname, '../frontend/.env.development') });
-dotenv.config({ path: path.join(__dirname, '../frontend/.env') });
+// Ensure DATABASE_URL is available
+if (!process.env.DATABASE_URL) {
+  console.error(chalk.red('❌ DATABASE_URL not found in environment variables'));
+  console.error(chalk.yellow('💡 Make sure .env.development or .env.local contains DATABASE_URL'));
+  process.exit(1);
+}
 
 // Create readline interface lazily to avoid conflicts with auth
 let rl: readline.Interface | null = null;
@@ -213,13 +223,51 @@ program
       try {
         const organizationId = await selectOrganization(auth);
         
-        const experiments = await ExperimentService.getExperimentsByOrganization(
-          organizationId,
-          {
-            groupFilter: options.group,
-            includeAnonymous: options.includeAnonymous
+        // Build participant filter based on includeAnonymous setting
+        const participantFilter = options.includeAnonymous ? {
+          status: {
+            not: 'returned'  // Always exclude returned participants
           }
-        );
+        } : {
+          AND: [
+            {
+              id: {
+                not: {
+                  startsWith: 'anon-session-'
+                }
+              }
+            },
+            {
+              status: {
+                not: 'returned'  // Always exclude returned participants
+              }
+            }
+          ]
+        };
+        
+        const experiments = await prisma.experiment.findMany({
+          where: {
+            organizationId,
+            archived: false,
+            ...(options.group && { group: options.group }),
+          },
+          include: {
+            _count: {
+              select: {
+                twoVideoComparisonTasks: true,
+                singleVideoEvaluationTasks: true,
+                participants: {
+                  where: participantFilter
+                },
+                twoVideoComparisonSubmissions: true,
+                singleVideoEvaluationSubmissions: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        });
       
       console.log(chalk.blue.bold('\n📋 Experiments\n'));
       
@@ -243,11 +291,11 @@ program
           console.log(chalk.gray(`  Created: ${exp.createdAt.toLocaleDateString()}`));
           
           if (exp.evaluationMode === 'single_video') {
-            console.log(chalk.gray(`  Video Tasks: ${exp._count.singleVideoEvaluationTasks}`));
-            console.log(chalk.gray(`  Single Video Evaluations: ${exp._count.singleVideoEvaluationSubmissions}`));
+            console.log(chalk.gray(`  Single Video Tasks: ${exp._count.singleVideoEvaluationTasks}`));
+            console.log(chalk.gray(`  Single Video Submissions: ${exp._count.singleVideoEvaluationSubmissions}`));
           } else {
-            console.log(chalk.gray(`  Comparisons: ${exp._count.twoVideoComparisonTasks}`));
-            console.log(chalk.gray(`  Evaluations: ${exp._count.twoVideoComparisonSubmissions}`));
+            console.log(chalk.gray(`  Two Video Comparison Tasks: ${exp._count.twoVideoComparisonTasks}`));
+            console.log(chalk.gray(`  Two Video Comparison Submissions: ${exp._count.twoVideoComparisonSubmissions}`));
           }
           console.log(chalk.gray(`  Participants: ${exp._count.participants}`));
           
@@ -447,8 +495,8 @@ program
       console.log(chalk.white('Total Participants:'), chalk.yellow(experiment._count.participants));
       
       if (experiment.evaluationMode === 'single_video') {
-        console.log(chalk.white('Total Video Tasks:'), chalk.yellow(experiment._count.singleVideoEvaluationTasks));
-        console.log(chalk.white('Total Single Video Evaluations:'), chalk.yellow(experiment._count.singleVideoEvaluationSubmissions));
+        console.log(chalk.white('Total Single Video Tasks:'), chalk.yellow(experiment._count.singleVideoEvaluationTasks));
+        console.log(chalk.white('Total Single Video Submissions:'), chalk.yellow(experiment._count.singleVideoEvaluationSubmissions));
         
         if (experiment._count.singleVideoEvaluationTasks > 0) {
           const avgEvaluationsPerTask = 
@@ -467,8 +515,8 @@ program
             chalk.yellow(`${(avgCompletionTime / 60).toFixed(1)} minutes`));
         }
       } else {
-        console.log(chalk.white('Total Comparisons:'), chalk.yellow(experiment._count.twoVideoComparisonTasks));
-        console.log(chalk.white('Total Evaluations:'), chalk.yellow(experiment._count.twoVideoComparisonSubmissions));
+        console.log(chalk.white('Total Two Video Comparison Tasks:'), chalk.yellow(experiment._count.twoVideoComparisonTasks));
+        console.log(chalk.white('Total Two Video Comparison Submissions:'), chalk.yellow(experiment._count.twoVideoComparisonSubmissions));
         
         if (experiment._count.twoVideoComparisonTasks > 0) {
           const avgEvaluationsPerComparison = 
@@ -694,7 +742,7 @@ program
   .action(async (options) => {
     await requireAuth('create video tasks', async () => {
       try {
-        console.log(chalk.blue.bold('\n🎬 Creating Video Tasks\n'));
+        console.log(chalk.blue.bold('\n🎬 Creating Single Video Evaluation Tasks\n'));
         
         let experimentSlug = options.experiment;
         if (!experimentSlug) {
@@ -1127,7 +1175,7 @@ program
         
         console.log(chalk.gray('\n📊 Study Summary:'));
         console.log(chalk.gray(`  Experiment: ${experiment.name} (${experimentSlug})`));
-        console.log(chalk.gray(`  Comparisons: ${experiment._count.twoVideoComparisonTasks}`));
+        console.log(chalk.gray(`  Two Video Comparison Tasks: ${experiment._count.twoVideoComparisonTasks}`));
         console.log(chalk.gray(`  Estimated time: ~${Math.ceil(experiment._count.twoVideoComparisonTasks * 2)} minutes`));
         console.log(chalk.gray(`  Reward: $${reward.toFixed(2)}`));
         console.log(chalk.gray(`  Participants: ${totalParticipants}`));
@@ -1177,7 +1225,33 @@ program
       try {
         console.log(chalk.blue.bold('\n🌍 Prolific Studies\n'));
         
-        const experiments = await prolificService.instance.getExperimentsWithProlificStudies();
+        const experiments = await prisma.experiment.findMany({
+          where: {
+            prolificStudyId: { not: null }
+          },
+          select: {
+            id: true,
+            name: true,
+            prolificStudyId: true,
+            status: true,
+            createdAt: true,
+            _count: {
+              select: {
+                participants: {
+                  where: {
+                    id: {
+                      not: {
+                        startsWith: 'anon-session-'
+                      }
+                    }
+                  }
+                },
+                twoVideoComparisonSubmissions: true,
+                twoVideoComparisonTasks: true
+              }
+            }
+          }
+        });
         
         if (experiments.length === 0) {
           console.log(chalk.gray('No experiments with Prolific studies found.'));
@@ -1282,6 +1356,9 @@ program
       } catch (error) {
         console.error(chalk.red('Error fetching study status:'), error);
       } finally {
+        if (rl) {
+          rl.close();
+        }
         await prisma.$disconnect();
       }
     });
@@ -1323,7 +1400,22 @@ program
         
         console.log(chalk.yellow('🔄 Publishing study...'));
         
-        const updatedStudy = await prolificService.instance.updateStudyStatus(studyId, { action: 'publish' });
+        // Make API call directly to avoid frontend prisma issues
+        const response = await fetch(`https://api.prolific.com/api/v1/studies/${studyId}/transition/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${process.env.PROLIFIC_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'PUBLISH' })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`Prolific API error (${response.status}): ${JSON.stringify(error)}`);
+        }
+        
+        const updatedStudy = await response.json();
         
         console.log(chalk.green.bold('\n✅ Study published successfully!'));
         console.log(chalk.white('Status:'), chalk.green(updatedStudy.status));
@@ -1332,6 +1424,159 @@ program
       } catch (error) {
         console.error(chalk.red('Error publishing study:'), error);
       } finally {
+        if (rl) {
+          rl.close();
+        }
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+program
+  .command('prolific:start')
+  .description('Start a paused Prolific study')
+  .option('-s, --study <studyId>', 'Prolific study ID')
+  .action(async (options) => {
+    await requireAuth('start Prolific study', async () => {
+      try {
+        const { question } = getReadline();
+        
+        let studyId = options.study;
+        if (!studyId) {
+          studyId = await question(chalk.cyan('Prolific study ID to start: '));
+        }
+        
+        console.log(chalk.yellow('🔄 Starting study...'));
+        
+        // Make API call directly to avoid frontend prisma issues
+        const response = await fetch(`https://api.prolific.com/api/v1/studies/${studyId}/transition/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${process.env.PROLIFIC_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'START' })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`Prolific API error (${response.status}): ${JSON.stringify(error)}`);
+        }
+        
+        const updatedStudy = await response.json();
+        
+        console.log(chalk.green.bold('\n✅ Study started successfully!'));
+        console.log(chalk.white('Status:'), chalk.green(updatedStudy.status));
+        console.log(chalk.blue.underline(`Dashboard: https://app.prolific.co/researcher/studies/${studyId}`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error starting study:'), error);
+      } finally {
+        if (rl) {
+          rl.close();
+        }
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+program
+  .command('prolific:pause')
+  .description('Pause a running Prolific study')
+  .option('-s, --study <studyId>', 'Prolific study ID')
+  .action(async (options) => {
+    await requireAuth('pause Prolific study', async () => {
+      try {
+        const { question } = getReadline();
+        
+        let studyId = options.study;
+        if (!studyId) {
+          studyId = await question(chalk.cyan('Prolific study ID to pause: '));
+        }
+        
+        console.log(chalk.yellow('🔄 Pausing study...'));
+        
+        // Make API call directly to avoid frontend prisma issues
+        const response = await fetch(`https://api.prolific.com/api/v1/studies/${studyId}/transition/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${process.env.PROLIFIC_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'PAUSE' })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`Prolific API error (${response.status}): ${JSON.stringify(error)}`);
+        }
+        
+        const updatedStudy = await response.json();
+        
+        console.log(chalk.green.bold('\n✅ Study paused successfully!'));
+        console.log(chalk.white('Status:'), chalk.green(updatedStudy.status));
+        console.log(chalk.blue.underline(`Dashboard: https://app.prolific.co/researcher/studies/${studyId}`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error pausing study:'), error);
+      } finally {
+        if (rl) {
+          rl.close();
+        }
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+program
+  .command('prolific:stop')
+  .description('Stop a Prolific study (cannot be restarted)')
+  .option('-s, --study <studyId>', 'Prolific study ID')
+  .action(async (options) => {
+    await requireAuth('stop Prolific study', async () => {
+      try {
+        const { question } = getReadline();
+        
+        let studyId = options.study;
+        if (!studyId) {
+          studyId = await question(chalk.cyan('Prolific study ID to stop: '));
+        }
+        
+        const confirm = await question(chalk.red('⚠️  Stopping a study is permanent. Continue? (y/N): '));
+        if (confirm.toLowerCase() !== 'y') {
+          console.log(chalk.gray('Study stop cancelled.'));
+          return;
+        }
+        
+        console.log(chalk.yellow('🔄 Stopping study...'));
+        
+        // Make API call directly to avoid frontend prisma issues
+        const response = await fetch(`https://api.prolific.com/api/v1/studies/${studyId}/transition/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${process.env.PROLIFIC_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action: 'STOP' })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`Prolific API error (${response.status}): ${JSON.stringify(error)}`);
+        }
+        
+        const updatedStudy = await response.json();
+        
+        console.log(chalk.green.bold('\n✅ Study stopped successfully!'));
+        console.log(chalk.white('Status:'), chalk.green(updatedStudy.status));
+        console.log(chalk.blue.underline(`Dashboard: https://app.prolific.co/researcher/studies/${studyId}`));
+        
+      } catch (error) {
+        console.error(chalk.red('Error stopping study:'), error);
+      } finally {
+        if (rl) {
+          rl.close();
+        }
         await prisma.$disconnect();
       }
     }, true);
@@ -1348,7 +1593,33 @@ program
         if (options.all) {
           console.log(chalk.blue.bold('\n🔄 Syncing All Prolific Studies\n'));
           
-          const experiments = await prolificService.instance.getExperimentsWithProlificStudies();
+          const experiments = await prisma.experiment.findMany({
+            where: {
+              prolificStudyId: { not: null }
+            },
+            select: {
+              id: true,
+              name: true,
+              prolificStudyId: true,
+              status: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  participants: {
+                    where: {
+                      id: {
+                        not: {
+                          startsWith: 'anon-session-'
+                        }
+                      }
+                    }
+                  },
+                  twoVideoComparisonSubmissions: true,
+                  twoVideoComparisonTasks: true
+                }
+              }
+            }
+          });
           
           if (experiments.length === 0) {
             console.log(chalk.gray('No experiments with Prolific studies found.'));
@@ -1494,9 +1765,9 @@ program
       console.log(chalk.blue.bold('\n🔍 Progress Debug for "' + experiment.name + '"\n'));
       
       console.log(chalk.white('Database Counts:'));
-      console.log(chalk.gray(`  Comparisons: ${experiment._count.twoVideoComparisonTasks}`));
+      console.log(chalk.gray(`  Two Video Comparison Tasks: ${experiment._count.twoVideoComparisonTasks}`));
       console.log(chalk.gray(`  Participants: ${experiment._count.participants}`));
-      console.log(chalk.gray(`  Evaluations: ${experiment._count.twoVideoComparisonSubmissions}`));
+      console.log(chalk.gray(`  Two Video Comparison Submissions: ${experiment._count.twoVideoComparisonSubmissions}`));
       
       console.log(chalk.white('\nExperiment Config:'));
       console.log(chalk.gray(JSON.stringify(experiment.config, null, 2)));
