@@ -532,7 +532,7 @@ export class ProlificService {
                 }
               }
             });
-          } catch (error) {
+          } catch (error: any) {
             if (error.code === 'P2002' && error.meta?.target?.includes('prolificId')) {
               // Unique constraint violation - participant exists in another experiment
               console.log(`⚠️  Participant ${submission['Participant id']} already exists in another experiment. Creating with unique session ID.`);
