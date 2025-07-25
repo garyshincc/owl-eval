@@ -105,15 +105,15 @@ export function ExperimentTable({
 
   const getProgressPercentage = (exp: Experiment) => {
     // For progress, show completed participants vs requested participants
-    const requestedParticipants = exp.config?.evaluationsPerComparison || 1
+    const requestedParticipants = exp.config?.evaluationsPerComparison
     const completedParticipants = exp._count.participants
     
-    if (requestedParticipants === 0) return 0
+    if (!requestedParticipants || requestedParticipants === 0) return 0
     return Math.min((completedParticipants / requestedParticipants) * 100, 100)
   }
 
   const getTargetParticipants = (exp: Experiment) => {
-    return exp.config?.evaluationsPerComparison || 1
+    return exp.config?.evaluationsPerComparison
   }
 
   const formatDate = (dateString: string) => {
@@ -598,7 +598,10 @@ export function ExperimentTable({
                         </div>
                         <Progress value={getProgressPercentage(exp)} className="h-2" />
                         <div className="text-xs text-gray-500">
-                          {exp._count.participants}/{getTargetParticipants(exp)} requested
+                          {getTargetParticipants(exp) ? 
+                            `${exp._count.participants}/${getTargetParticipants(exp)} requested` :
+                            `${exp._count.participants} participants (target not set)`
+                          }
                         </div>
                       </div>
                     </TableCell>
