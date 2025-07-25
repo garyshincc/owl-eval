@@ -101,8 +101,13 @@ program
     await requireAuth('create experiments', async (auth) => {
       console.log(chalk.blue.bold('\n🧪 Creating a new experiment\n'));
 
+      let rl: readline.Interface | null = null;
       try {
-      const { question } = getReadline();
+        // Get organization first
+        const organizationId = await selectOrganization(auth);
+        
+        const { rl: readlineInterface, question } = getReadline();
+        rl = readlineInterface;
       
       // Interactive prompts
       const name = options.name || await question(chalk.cyan('Experiment name: '));
@@ -168,11 +173,12 @@ program
           group: group || null,
           status: 'draft',
           evaluationMode,
+          organizationId,  // Add missing organizationId
           createdBy: auth.userId,
           config: {
             models,
             scenarios,
-            evaluationsPerComparison: evaluationMode === 'comparison' ? 5 : 3,
+            // Don't set evaluationsPerComparison here - let it be configured later
             dimensions: [
               'overall_quality',
               'controllability',
@@ -206,6 +212,10 @@ program
       } catch (error) {
         console.error(chalk.red('Error creating experiment:'), error);
       } finally {
+        // Clean up readline interface
+        if (rl) {
+          rl.close();
+        }
         await prisma.$disconnect();
       }
     }, true); // Require admin permissions
@@ -349,6 +359,8 @@ program
       }
       } catch (error) {
         console.error(chalk.red('Error listing experiments:'), error);
+      } finally {
+        await prisma.$disconnect();
       }
     });
   });
@@ -1885,21 +1897,21 @@ program
       console.log(chalk.gray(JSON.stringify(experiment.config, null, 2)));
       
       // Calculate progress the same way the frontend does
-      const evaluationsPerComparison = experiment.config?.evaluationsPerComparison || 5;
-      const targetEvaluations = experiment._count.twoVideoComparisonTasks * evaluationsPerComparison;
-      const progressPercentage = Math.min((experiment._count.twoVideoComparisonSubmissions / targetEvaluations) * 100, 100);
+      const evaluationsPerComparison = experiment.config?.evaluationsPerComparison;
+      const targetEvaluations = evaluationsPerComparison ? experiment._count.twoVideoComparisonTasks * evaluationsPerComparison : 0;
+      const progressPercentage = targetEvaluations > 0 ? Math.min((experiment._count.twoVideoComparisonSubmissions / targetEvaluations) * 100, 100) : 0;
       
       console.log(chalk.white('\nProgress Calculation:'));
       console.log(chalk.gray(`  evaluationsPerComparison from config: ${experiment.config?.evaluationsPerComparison}`));
-      console.log(chalk.gray(`  evaluationsPerComparison used: ${evaluationsPerComparison}`));
-      console.log(chalk.gray(`  targetEvaluations: ${experiment._count.twoVideoComparisonTasks} × ${evaluationsPerComparison} = ${targetEvaluations}`));
+      console.log(chalk.gray(`  evaluationsPerComparison used: ${evaluationsPerComparison || 'not set'}`));
+      console.log(chalk.gray(`  targetEvaluations: ${experiment._count.twoVideoComparisonTasks} × ${evaluationsPerComparison || 'not set'} = ${targetEvaluations}`));
       console.log(chalk.gray(`  actual evaluations: ${experiment._count.twoVideoComparisonSubmissions}`));
       console.log(chalk.yellow(`  progressPercentage: ${experiment._count.twoVideoComparisonSubmissions}/${targetEvaluations} = ${Math.round(progressPercentage)}%`));
       
       if (progressPercentage !== 100 && experiment._count.twoVideoComparisonSubmissions > 0) {
         console.log(chalk.red('\n⚠️  Progress is not 100%. Possible issues:'));
         if (!experiment.config?.evaluationsPerComparison) {
-          console.log(chalk.red('  - Missing evaluationsPerComparison in config (defaulting to 5)'));
+          console.log(chalk.red('  - Missing evaluationsPerComparison in config (target not set)'));
           
           // Auto-fix suggestion
           if (experiment._count.twoVideoComparisonTasks > 0) {
