@@ -1,17 +1,16 @@
 #!/usr/bin/env tsx
 
+// Load environment variables FIRST before ANY imports
+import * as dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env.development' });
+dotenv.config({ path: '.env' });
+
 import { Command } from 'commander';
 import * as readline from 'readline';
 import { promisify } from 'util';
 import * as path from 'path';
 import chalk from 'chalk';
-import * as dotenv from 'dotenv';
-
-// Load environment variables FIRST before any imports that use them
-// The script runs from the frontend directory via the wrapper
-dotenv.config({ path: '.env.local' });
-dotenv.config({ path: '.env.development' });
-dotenv.config({ path: '.env' });
 
 import { generateSlug, isValidSlug, slugify } from '../frontend/src/lib/utils/slug';
 import { requireAuth, clearAuth } from './auth';
@@ -20,6 +19,7 @@ import { prolificService } from '../frontend/src/lib/services/prolific';
 // Don't import ExperimentService - it uses frontend prisma client
 // import { ExperimentService } from '../frontend/src/lib/experiment-service';
 import { getUserOrganizations } from './cli-organization';
+import { uploadVideoToTigris } from '../frontend/src/lib/storage';
 
 // Ensure DATABASE_URL is available
 if (!process.env.DATABASE_URL) {
@@ -27,6 +27,7 @@ if (!process.env.DATABASE_URL) {
   console.error(chalk.yellow('💡 Make sure .env.development or .env.local contains DATABASE_URL'));
   process.exit(1);
 }
+
 
 // Create readline interface lazily to avoid conflicts with auth
 let rl: readline.Interface | null = null;
@@ -85,7 +86,7 @@ async function selectOrganization(auth: any): Promise<string> {
 const program = new Command();
 
 program
-  .name('experiment-cli')
+  .name('evalctl')
   .description('CLI for managing evaluation experiments')
   .version('1.0.0');
 
@@ -201,13 +202,13 @@ program
         chalk.blue.underline(`localhost:3000/evaluate/${experiment.slug}`));
       
       console.log(chalk.gray('\nNext steps:'));
-      console.log(chalk.gray('1. Upload videos using: experiment-cli upload-videos --dir <directory>'));
+      console.log(chalk.gray('1. Upload videos using: ./evalctl upload-videos --dir <directory>'));
       if (experiment.evaluationMode === 'single_video') {
-        console.log(chalk.gray('2. Create video tasks using: experiment-cli create-video-tasks --experiment <slug>'));
+        console.log(chalk.gray('2. Create video tasks using: ./evalctl create-video-tasks --experiment <slug>'));
       } else {
-        console.log(chalk.gray('2. Assign videos using: experiment-cli assign-videos --experiment <slug>'));
+        console.log(chalk.gray('2. Assign videos using: ./evalctl assign-videos --experiment <slug>'));
       }
-      console.log(chalk.gray('3. Launch experiment using: experiment-cli launch'));
+      console.log(chalk.gray('3. Launch experiment using: ./evalctl launch'));
       
       } catch (error) {
         console.error(chalk.red('Error creating experiment:'), error);
@@ -672,7 +673,7 @@ program
         
         if (videos.length === 0) {
           console.log(chalk.gray('No videos found in library.'));
-          console.log(chalk.gray('Upload videos using: experiment-cli upload-videos --dir <directory>'));
+          console.log(chalk.gray('Upload videos using: ./evalctl upload-videos --dir <directory>'));
           return;
         }
         
@@ -825,6 +826,297 @@ program
     }, true);
   });
 
+// Upload videos command
+program
+  .command('upload-videos')
+  .description('Upload videos from a directory to the video library')
+  .option('-d, --dir <directory>', 'Directory containing video files to upload')
+  .action(async (options) => {
+    await requireAuth('upload videos', async (auth) => {
+      const { spawn } = require('child_process');
+      const fs = require('fs');
+      const path = require('path');
+
+      try {
+        if (!options.dir) {
+          console.error(chalk.red('❌ Directory is required. Use --dir <directory>'));
+          process.exit(1);
+        }
+
+        // Resolve path relative to where the command was run, not where the script is located
+        const originalPwd = process.env.ORIGINAL_PWD || process.cwd();
+        const videoDir = path.resolve(originalPwd, options.dir);
+
+        // Check if directory exists
+        if (!fs.existsSync(videoDir)) {
+          console.error(chalk.red(`❌ Directory not found: ${videoDir}`));
+          process.exit(1);
+        }
+
+        // Get all video files from directory
+        const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+        const videoFiles = fs.readdirSync(videoDir)
+          .filter((file: string) => videoExtensions.some(ext => file.toLowerCase().endsWith(ext)))
+          .map((file: string) => path.join(videoDir, file));
+
+        if (videoFiles.length === 0) {
+          console.error(chalk.red(`❌ No video files found in: ${videoDir}`));
+          process.exit(1);
+        }
+
+        console.log(chalk.blue(`📁 Found ${videoFiles.length} video files in ${videoDir}`));
+        console.log(chalk.blue(`🚀 Starting upload...\n`));
+
+        // Get organization once for all uploads
+        const organizationId = await selectOrganization(auth);
+        const results: any[] = [];
+
+        // Upload function using existing web UI functions
+        async function uploadVideo(filePath: string): Promise<any> {
+          const fileName = path.basename(filePath);
+          console.log(chalk.gray(`📤 Uploading: ${fileName}`));
+          
+          try {
+            // Read file as buffer (same as web UI)
+            const fileBuffer = fs.readFileSync(filePath);
+            
+            // Generate key for video library (same logic as web UI route)
+            const fileExtension = fileName.split('.').pop() || 'mp4';
+            const uniqueId = Math.random().toString(36).substring(2, 10); // 8 char random string
+            const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const key = `video-library/${uniqueId}_${sanitizedName}`;
+            
+            // Upload to Tigris using existing function
+            const videoUrl = await uploadVideoToTigris(fileBuffer, key, 'video/mp4');
+
+            // Save video record to database (same as web UI route)
+            const video = await prisma.video.create({
+              data: {
+                key,
+                name: fileName,
+                url: videoUrl,
+                size: fileBuffer.length,
+                organizationId,
+                tags: [],
+                groups: [],
+                metadata: {
+                  originalName: fileName,
+                  mimeType: 'video/mp4',
+                  uploadedBy: auth.userId || 'cli-user'
+                }
+              }
+            });
+            
+            console.log(chalk.green(`✅ Uploaded: ${fileName}`));
+            return {
+              success: true,
+              fileName,
+              url: videoUrl,
+              key,
+              id: video.id
+            };
+            
+          } catch (error) {
+            console.error(chalk.red(`❌ Failed to upload ${fileName}: ${error}`));
+            return {
+              success: false,
+              fileName,
+              error: error.message || 'Upload failed'
+            };
+          }
+        }
+
+        // Upload all videos sequentially
+        for (const filePath of videoFiles) {
+          const result = await uploadVideo(filePath);
+          results.push(result);
+          
+          // Small delay between uploads to avoid overwhelming the server
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Summary
+        const successful = results.filter(r => r.success);
+        const failed = results.filter(r => !r.success);
+
+        console.log(chalk.blue.bold(`\n📊 Upload Summary:`));
+        console.log(chalk.green(`✅ Successful: ${successful.length}`));
+        console.log(chalk.red(`❌ Failed: ${failed.length}`));
+
+        if (successful.length > 0) {
+          console.log(chalk.blue(`\n📋 Uploaded Videos:`));
+          successful.forEach((result: any) => {
+            console.log(chalk.gray(`  • ${result.fileName}`));
+          });
+        }
+
+        if (failed.length > 0) {
+          console.log(chalk.red(`\n💥 Failed Uploads:`));
+          failed.forEach((result: any) => {
+            console.log(chalk.red(`  • ${result.fileName}: ${result.error}`));
+          });
+        }
+
+        console.log(chalk.green.bold(`\n🎉 Upload complete! Videos are now available in the Video Library.`));
+
+      } catch (error) {
+        console.error(chalk.red('Error uploading videos:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    });
+  });
+
+// Sync video library with Tigris storage
+program
+  .command('sync-videos')
+  .description('Sync video library database with Tigris storage (Tigris as source of truth)')
+  .option('--dry-run', 'Show what would be synced without making changes')
+  .action(async (options) => {
+    await requireAuth('sync video library', async (auth) => {
+      const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+      
+      try {
+        console.log(chalk.blue.bold('\n🔄 Syncing Video Library with Tigris Storage\n'));
+        
+        // Initialize Tigris client (same config as web UI)
+        const tigrisClient = new S3Client({
+          endpoint: process.env.AWS_ENDPOINT_URL_S3 || 'https://fly.storage.tigris.dev',
+          region: process.env.AWS_REGION || 'auto',
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+          },
+        });
+
+        const bucketName = process.env.TIGRIS_BUCKET_NAME || 'eval-data';
+        
+        // List all video-library objects in Tigris
+        console.log(chalk.gray('📋 Fetching videos from Tigris storage...'));
+        const listCommand = new ListObjectsV2Command({
+          Bucket: bucketName,
+          Prefix: 'video-library/',
+        });
+        
+        const tigrisResponse = await tigrisClient.send(listCommand);
+        const tigrisVideos = tigrisResponse.Contents || [];
+        
+        console.log(chalk.blue(`Found ${tigrisVideos.length} videos in Tigris storage`));
+        
+        // Get all video records from database
+        console.log(chalk.gray('📋 Fetching videos from database...'));
+        const dbVideos = await prisma.video.findMany({
+          where: {
+            key: {
+              startsWith: 'video-library/'
+            }
+          },
+          select: {
+            id: true,
+            key: true,
+            name: true,
+            url: true,
+            size: true,
+            uploadedAt: true
+          }
+        });
+        
+        console.log(chalk.blue(`Found ${dbVideos.length} videos in database`));
+        
+        // Create maps for comparison
+        const tigrisKeys = new Set(tigrisVideos.map(obj => obj.Key));
+        const dbKeys = new Set(dbVideos.map(video => video.key));
+        
+        // Find orphaned database records (in DB but not in Tigris)
+        const orphanedDbRecords = dbVideos.filter(video => !tigrisKeys.has(video.key));
+        
+        // Find missing database records (in Tigris but not in DB)
+        const missingDbRecords = tigrisVideos.filter(obj => !dbKeys.has(obj.Key));
+        
+        console.log(chalk.white('\n📊 Sync Analysis (Tigris as source of truth):'));
+        console.log(chalk.blue(`🎯 Target: ${tigrisVideos.length} videos in Tigris storage`));
+        console.log(chalk.blue(`📄 Current: ${dbVideos.length} videos in database`));
+        console.log(chalk.green(`✅ In sync: ${tigrisVideos.length - missingDbRecords.length} videos`));
+        console.log(chalk.red(`❌ Orphaned DB records: ${orphanedDbRecords.length} (will be removed)`));
+        console.log(chalk.yellow(`➕ Missing DB records: ${missingDbRecords.length} (will be created)`));
+        
+        if (orphanedDbRecords.length > 0) {
+          console.log(chalk.red('\n🗑️  Database Records to Remove:'));
+          orphanedDbRecords.forEach(video => {
+            console.log(chalk.gray(`  • ${video.name} (${video.key})`));
+          });
+        }
+        
+        if (missingDbRecords.length > 0) {
+          console.log(chalk.yellow('\n➕ Database Records to Create:'));
+          missingDbRecords.forEach(obj => {
+            const sizeKB = obj.Size ? Math.round(obj.Size / 1024) : 0;
+            const fileName = obj.Key?.split('/').pop()?.split('_').slice(1).join('_') || 'unknown';
+            console.log(chalk.gray(`  • ${fileName} (${obj.Key}) - ${sizeKB} KB`));
+          });
+        }
+        
+        if (!options.dryRun) {
+          // Remove orphaned database records
+          if (orphanedDbRecords.length > 0) {
+            console.log(chalk.yellow('\n🧹 Removing orphaned database records...'));
+            const deleteResult = await prisma.video.deleteMany({
+              where: {
+                id: {
+                  in: orphanedDbRecords.map(v => v.id)
+                }
+              }
+            });
+            console.log(chalk.green(`✅ Removed ${deleteResult.count} orphaned database records`));
+          }
+          
+          // Create missing database records
+          if (missingDbRecords.length > 0) {
+            console.log(chalk.yellow('\n➕ Creating missing database records...'));
+            const organizationId = await selectOrganization(auth);
+            
+            for (const obj of missingDbRecords) {
+              const key = obj.Key!;
+              const fileName = key.split('/').pop()?.split('_').slice(1).join('_') || 'unknown';
+              const bucketName = process.env.TIGRIS_BUCKET_NAME || 'eval-data';
+              const videoUrl = `https://${bucketName}.fly.storage.tigris.dev/${key}`;
+              
+              await prisma.video.create({
+                data: {
+                  key,
+                  name: fileName,
+                  url: videoUrl,
+                  size: obj.Size || 0,
+                  organizationId,
+                  tags: [],
+                  groups: [],
+                  metadata: {
+                    originalName: fileName,
+                    mimeType: 'video/mp4',
+                    uploadedBy: 'sync-command',
+                    syncedAt: new Date().toISOString()
+                  }
+                }
+              });
+            }
+            console.log(chalk.green(`✅ Created ${missingDbRecords.length} missing database records`));
+          }
+          
+          console.log(chalk.green('\n🎉 Database successfully synced with Tigris storage!'));
+          console.log(chalk.blue(`📊 Final state: ${tigrisVideos.length} videos in both storage and database`));
+        } else {
+          console.log(chalk.blue('\n🔍 Dry run complete - no changes made'));
+          console.log(chalk.gray('Run without --dry-run to sync database with Tigris storage'));
+        }
+        
+      } catch (error) {
+        console.error(chalk.red('Error syncing video library:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    });
+  });
+
 // Create video tasks command
 program
   .command('create-video-tasks')
@@ -868,7 +1160,7 @@ program
         
         if (videos.length === 0) {
           console.log(chalk.red('No videos found in library.'));
-          console.log(chalk.gray('Upload videos first using: experiment-cli upload-videos --dir <directory>'));
+          console.log(chalk.gray('Upload videos first using: ./evalctl upload-videos --dir <directory>'));
           return;
         }
         
@@ -1299,8 +1591,8 @@ program
         
         console.log(chalk.gray('\nNext steps:'));
         console.log(chalk.gray(`1. Review study on Prolific dashboard`));
-        console.log(chalk.gray(`2. Publish study: experiment-cli prolific:publish --study ${prolificStudy.id}`));
-        console.log(chalk.gray(`3. Monitor progress: experiment-cli prolific:status --study ${prolificStudy.id}`));
+        console.log(chalk.gray(`2. Publish study: ./evalctl prolific:publish --study ${prolificStudy.id}`));
+        console.log(chalk.gray(`3. Monitor progress: ./evalctl prolific:status --study ${prolificStudy.id}`));
         
       } catch (error) {
         console.error(chalk.red('Error creating Prolific study:'), error);
