@@ -81,12 +81,13 @@ async function selectOrganization(auth: any): Promise<string> {
     console.log(chalk.white(`${index + 1}. ${org.name} (${org.slug}) - ${membership.role}`));
   });
   
-  const { rl, question } = getReadline();
+  const { rl: readlineInterface, question } = getReadline();
   const choice = await question(chalk.cyan('\nEnter organization number: '));
   const index = parseInt(choice) - 1;
   
-  // Close readline interface
-  rl.close();
+  // Close readline interface and reset global variable
+  readlineInterface.close();
+  rl = null;
   
   if (index < 0 || index >= userOrganizations.length) {
     console.log(chalk.red('❌ Invalid selection'));
