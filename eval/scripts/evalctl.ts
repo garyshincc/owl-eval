@@ -141,23 +141,10 @@ program
       const modeInput = await question(chalk.cyan('Select evaluation mode (1 or 2): '));
       const evaluationMode = modeInput === '2' ? 'single_video' : 'comparison';
       
-      // Model configuration
-      console.log(chalk.blue('\n📊 Model Configuration'));
+      // Scenario configuration only - models will be auto-discovered from videos
+      console.log(chalk.blue('\n📊 Scenario Configuration'));
       
-      let models: string[] = [];
       let scenarios: string[] = [];
-      
-      if (evaluationMode === 'comparison') {
-        const modelsInput = await question(
-          chalk.cyan('Models to compare (comma-separated, e.g., "model1,model2"): ')
-        );
-        models = modelsInput.split(',').map((m: string) => m.trim());
-      } else {
-        const modelsInput = await question(
-          chalk.cyan('Models to evaluate (comma-separated, e.g., "model1,model2,model3"): ')
-        );
-        models = modelsInput.split(',').map((m: string) => m.trim());
-      }
       
       // Scenario configuration
       const scenariosInput = await question(
@@ -177,9 +164,8 @@ program
           organizationId,  // Add missing organizationId
           createdBy: auth.userId,
           config: {
-            models,
             scenarios,
-            // Don't set evaluationsPerComparison here - let it be configured later
+            // Models will be auto-discovered from uploaded videos during task creation
             dimensions: [
               'overall_quality',
               'controllability',
@@ -831,6 +817,7 @@ program
   .command('upload-videos')
   .description('Upload videos from a directory to the video library')
   .option('-d, --dir <directory>', 'Directory containing video files to upload')
+  .option('-m, --model <model>', 'Model name to associate with uploaded videos')
   .action(async (options) => {
     await requireAuth('upload videos', async (auth) => {
       const { spawn } = require('child_process');
@@ -899,10 +886,12 @@ program
                 organizationId,
                 tags: [],
                 groups: [],
+                modelName: options.model || null,
                 metadata: {
                   originalName: fileName,
                   mimeType: 'video/mp4',
-                  uploadedBy: auth.userId || 'cli-user'
+                  uploadedBy: auth.userId || 'cli-user',
+                  modelName: options.model || null
                 }
               }
             });
@@ -1117,6 +1106,109 @@ program
     });
   });
 
+// Clear all video data command
+program
+  .command('clear-videos')
+  .description('Delete ALL video data from both database and storage (DESTRUCTIVE)')
+  .option('--confirm', 'Required confirmation flag to proceed with deletion')
+  .option('--storage-only', 'Only delete from storage, keep database records')
+  .option('--db-only', 'Only delete from database, keep storage files')
+  .action(async (options) => {
+    await requireAuth('clear video data', async (auth) => {
+      try {
+        if (!options.confirm) {
+          console.log(chalk.red.bold('\n⚠️  WARNING: This will DELETE ALL video data!\n'));
+          console.log(chalk.gray('This command will:'));
+          console.log(chalk.gray('• Delete all video files from Tigris storage'));
+          console.log(chalk.gray('• Delete all video records from database'));
+          console.log(chalk.gray('• This action CANNOT be undone!'));
+          console.log(chalk.yellow('\nTo proceed, add the --confirm flag:'));
+          console.log(chalk.white('  ./evalctl clear-videos --confirm'));
+          console.log(chalk.gray('\nOptions:'));
+          console.log(chalk.gray('  --storage-only  Only delete files from storage'));
+          console.log(chalk.gray('  --db-only       Only delete database records'));
+          return;
+        }
+
+        console.log(chalk.red.bold('\n🗑️  Clearing ALL Video Data\n'));
+        
+        const organizationId = await selectOrganization(auth);
+        let deletedFiles = 0;
+        let deletedRecords = 0;
+
+        // Delete from storage unless --db-only
+        if (!options.dbOnly) {
+          console.log(chalk.yellow('🧹 Deleting files from Tigris storage...'));
+          
+          const { S3Client, ListObjectsV2Command, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+          const tigrisClient = new S3Client({
+            endpoint: process.env.AWS_ENDPOINT_URL_S3 || 'https://fly.storage.tigris.dev',
+            region: process.env.AWS_REGION || 'auto',
+            credentials: {
+              accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+            },
+          });
+
+          const bucketName = process.env.TIGRIS_BUCKET_NAME;
+          if (!bucketName) {
+            throw new Error('TIGRIS_BUCKET_NAME environment variable is not set');
+          }
+          
+          // List all video-library objects
+          const listCommand = new ListObjectsV2Command({
+            Bucket: bucketName,
+            Prefix: 'video-library/',
+          });
+          
+          const response = await tigrisClient.send(listCommand);
+          const objects = response.Contents || [];
+          
+          console.log(chalk.blue(`Found ${objects.length} files to delete from storage`));
+          
+          // Delete each object
+          for (const obj of objects) {
+            if (obj.Key) {
+              const deleteCommand = new DeleteObjectCommand({
+                Bucket: bucketName,
+                Key: obj.Key,
+              });
+              await tigrisClient.send(deleteCommand);
+              deletedFiles++;
+              console.log(chalk.gray(`  ✓ Deleted: ${obj.Key}`));
+            }
+          }
+        }
+
+        // Delete from database unless --storage-only  
+        if (!options.storageOnly) {
+          console.log(chalk.yellow('🧹 Deleting records from database...'));
+          
+          const deleteResult = await prisma.video.deleteMany({
+            where: {
+              organizationId,
+              key: {
+                startsWith: 'video-library/'
+              }
+            }
+          });
+          deletedRecords = deleteResult.count;
+          console.log(chalk.blue(`Deleted ${deletedRecords} video records from database`));
+        }
+
+        console.log(chalk.green.bold('\n✅ Video data cleared successfully!'));
+        console.log(chalk.white(`📁 Storage files deleted: ${deletedFiles}`));
+        console.log(chalk.white(`📄 Database records deleted: ${deletedRecords}`));
+        console.log(chalk.gray('\nYou can now upload fresh videos with model information.'));
+        
+      } catch (error) {
+        console.error(chalk.red('Error clearing video data:'), error);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
 // Create video tasks command
 program
   .command('create-video-tasks')
@@ -1126,6 +1218,7 @@ program
   .option('--seed <seed>', 'Random seed for reproducible assignment')
   .action(async (options) => {
     await requireAuth('create video tasks', async () => {
+      let rl: readline.Interface | null = null;
       try {
         console.log(chalk.blue.bold('\n🎬 Creating Single Video Evaluation Tasks\n'));
         
@@ -1138,7 +1231,7 @@ program
         // Get experiment
         const experiment = await prisma.experiment.findUnique({
           where: { slug: experimentSlug },
-          include: { videoTasks: true }
+          include: { singleVideoEvaluationTasks: true }
         });
         
         if (!experiment) {
@@ -1168,68 +1261,206 @@ program
         console.log(chalk.white(`Available videos: ${videos.length}`));
         
         const config = experiment.config as any;
-        const models = config?.models || [];
         const scenarios = config?.scenarios || [];
+        
+        // Handle empty scenarios - add a default scenario
+        const validScenarios = scenarios.filter((s: any) => s && s.trim && s.trim().length > 0);
+        if (validScenarios.length === 0) {
+          console.log(chalk.yellow('⚠ No valid scenarios found in experiment config. Adding default scenario "default".'));
+          scenarios.length = 0; // Clear array
+          scenarios.push('default');
+          
+          // Update experiment config
+          await prisma.experiment.update({
+            where: { id: experiment.id },
+            data: {
+              config: {
+                ...config,
+                scenarios: ['default']
+              }
+            }
+          });
+        }
+        
+        // Auto-discover available models from uploaded videos
+        const availableModels = Array.from(new Set(
+          videos.filter((v: any) => v.modelName).map((v: any) => v.modelName)
+        ));
+        
+        if (availableModels.length === 0) {
+          console.log(chalk.red('No videos with model names found in library.'));
+          console.log(chalk.gray('Upload videos with model names using: ./evalctl upload-videos --dir <directory> --model <model-name>'));
+          return;
+        }
+        
+        console.log(chalk.white(`Auto-discovered models: ${chalk.green(availableModels.join(', '))}`));
+        
+        // Show video counts per model
+        console.log(chalk.blue('\n📊 Videos available per model:'));
+        availableModels.forEach(model => {
+          const modelVideos = videos.filter((v: any) => v.modelName === model);
+          console.log(chalk.white(`  ${model}: ${chalk.green(modelVideos.length)} videos`));
+        });
+        
+        // Ask user to select which model to evaluate
+        const { rl: readlineInterface, question } = getReadline();
+        rl = readlineInterface;
+        console.log(chalk.blue('\n🎯 Select model to evaluate:'));
+        availableModels.forEach((model, index) => {
+          console.log(chalk.gray(`  ${index + 1}. ${model}`));
+        });
+        
+        const modelChoice = await question(chalk.cyan('Enter model number or name: '));
+        
+        let selectedModel: string;
+        const choiceNum = parseInt(modelChoice);
+        if (!isNaN(choiceNum) && choiceNum >= 1 && choiceNum <= availableModels.length) {
+          selectedModel = availableModels[choiceNum - 1];
+        } else if (availableModels.includes(modelChoice)) {
+          selectedModel = modelChoice;
+        } else {
+          console.log(chalk.red(`Invalid choice: ${modelChoice}`));
+          return;
+        }
+        
+        console.log(chalk.green(`\n✅ Selected model: ${selectedModel}`));
+        
+        // Get all videos for the selected model
+        const modelVideos = videos.filter((v: any) => v.modelName === selectedModel);
+        console.log(chalk.white(`Found ${modelVideos.length} videos for ${selectedModel}`));
         
         const videoTasks: any[] = [];
         
-        console.log(chalk.blue('\n🤖 Auto-creating video tasks based on metadata...\n'));
+        console.log(chalk.blue('\n🎬 Creating video evaluation tasks...\n'));
         
-        for (const scenario of scenarios) {
-          for (const model of models) {
-            // Find video by metadata first, fallback to filename patterns
-            let video = videos.find((v: any) => 
-              v.modelName === model && v.scenarioId === scenario
-            );
-            
-            // Fallback to filename patterns if metadata not available
-            if (!video) {
-              video = videos.find((v: any) => 
-                v.name.toLowerCase().includes(scenario.toLowerCase()) && 
-                v.name.toLowerCase().includes(model.toLowerCase())
-              );
+        // Create one task per video for the selected model
+        modelVideos.forEach((video: any, index: number) => {
+          videoTasks.push({
+            experimentId: experiment.id,
+            scenarioId: 'single-evaluation', // Use a generic scenario name
+            modelName: selectedModel,
+            videoPath: video.url || video.path,
+            videoId: video.id,
+            metadata: {
+              videoName: video.name,
+              videoSize: video.size,
+              videoDuration: video.duration,
+              taskIndex: index + 1
             }
-            
-            if (video) {
-              videoTasks.push({
-                experimentId: experiment.id,
-                scenarioId: scenario,
-                modelName: model,
-                videoPath: video.url || video.path,
-                videoId: video.id,
-                metadata: {
-                  videoName: video.name,
-                  videoSize: video.size,
-                  videoDuration: video.duration
-                }
-              });
-              
-              console.log(chalk.green(`✓ ${scenario}: ${model}`));
-              console.log(chalk.gray(`  Video: ${video.name}\n`));
-            } else {
-              console.log(chalk.yellow(`⚠ ${scenario}: ${model} - video not found`));
-            }
-          }
-        }
+          });
+          
+          console.log(chalk.green(`✓ Task ${index + 1}: ${video.name}`));
+        });
         
         if (videoTasks.length > 0) {
+          // Update experiment config with selected model
+          await prisma.experiment.update({
+            where: { id: experiment.id },
+            data: {
+              config: {
+                ...config,
+                models: [selectedModel],
+                scenarios: ['single-evaluation']
+              }
+            }
+          });
+          
           // Create video tasks
-          await prisma.videoTask.createMany({
+          await prisma.singleVideoEvaluationTask.createMany({
             data: videoTasks
           });
           
-          console.log(chalk.green.bold(`\n✅ Created ${videoTasks.length} video tasks!`));
-          console.log(chalk.white('Tasks created for:'));
-          videoTasks.forEach(task => {
-            console.log(chalk.gray(`  - ${task.scenarioId}: ${task.modelName}`));
-          });
+          console.log(chalk.green.bold(`\n✅ Created ${videoTasks.length} video evaluation tasks!`));
+          console.log(chalk.white(`All tasks are for model: ${chalk.green(selectedModel)}`));
+          console.log(chalk.gray(`Each video will be evaluated individually on a 1-5 scale`));
         } else {
-          console.log(chalk.red('\nNo matching videos found. Check your video metadata or filename patterns.'));
-          console.log(chalk.gray('Expected: videos with modelName and scenarioId metadata, or pattern {scenario}_{model}.mp4'));
+          console.log(chalk.red(`\nNo videos found for model: ${selectedModel}`));
         }
         
       } catch (error) {
         console.error(chalk.red('Error creating video tasks:'), error);
+      } finally {
+        // Clean up readline interface
+        if (rl) {
+          rl.close();
+        }
+        await prisma.$disconnect();
+      }
+    }, true);
+  });
+
+// Reset experiment command
+program
+  .command('reset')
+  .description('Reset an experiment by deleting all tasks (keeps experiment config)')
+  .option('-e, --experiment <slug>', 'Experiment slug')
+  .option('--confirm', 'Required confirmation flag to proceed with deletion')
+  .action(async (options) => {
+    await requireAuth('delete video tasks', async () => {
+      try {
+        if (!options.confirm) {
+          console.log(chalk.red.bold('\n⚠️  WARNING: This will RESET the experiment!\n'));
+          console.log(chalk.gray('This will:'));
+          console.log(chalk.gray('• Delete all video evaluation tasks'));
+          console.log(chalk.gray('• Delete all comparison tasks'));
+          console.log(chalk.gray('• Keep the experiment config intact'));
+          console.log(chalk.gray('• This action CANNOT be undone!'));
+          console.log(chalk.yellow('\nTo proceed, add the --confirm flag:'));
+          console.log(chalk.white('  ./evalctl reset --experiment <slug> --confirm'));
+          return;
+        }
+
+        console.log(chalk.red.bold('\n🔄 Resetting Experiment\n'));
+        
+        let experimentSlug = options.experiment;
+        if (!experimentSlug) {
+          const { question } = getReadline();
+          experimentSlug = await question(chalk.cyan('Experiment slug: '));
+        }
+        
+        // Get experiment
+        const experiment = await prisma.experiment.findUnique({
+          where: { slug: experimentSlug },
+          include: { 
+            singleVideoEvaluationTasks: true,
+            twoVideoComparisonTasks: true 
+          }
+        });
+        
+        if (!experiment) {
+          console.log(chalk.red(`Experiment "${experimentSlug}" not found.`));
+          return;
+        }
+
+        console.log(chalk.white(`Found experiment: ${experiment.name}`));
+        console.log(chalk.white(`Single video tasks: ${experiment.singleVideoEvaluationTasks.length}`));
+        console.log(chalk.white(`Comparison tasks: ${experiment.twoVideoComparisonTasks.length}`));
+
+        let deletedTasks = 0;
+
+        // Delete single video evaluation tasks
+        if (experiment.singleVideoEvaluationTasks.length > 0) {
+          const result = await prisma.singleVideoEvaluationTask.deleteMany({
+            where: { experimentId: experiment.id }
+          });
+          deletedTasks += result.count;
+          console.log(chalk.blue(`Deleted ${result.count} single video evaluation tasks`));
+        }
+
+        // Delete comparison tasks  
+        if (experiment.twoVideoComparisonTasks.length > 0) {
+          const result = await prisma.twoVideoComparisonTask.deleteMany({
+            where: { experimentId: experiment.id }
+          });
+          deletedTasks += result.count;
+          console.log(chalk.blue(`Deleted ${result.count} comparison tasks`));
+        }
+
+        console.log(chalk.green.bold(`\n✅ Reset complete! Deleted ${deletedTasks} tasks.`));
+        console.log(chalk.gray('The experiment is now ready for fresh task creation.'));
+        
+      } catch (error) {
+        console.error(chalk.red('Error deleting tasks:'), error);
       } finally {
         await prisma.$disconnect();
       }
@@ -1255,11 +1486,29 @@ program
       try {
         const { question } = getReadline();
         
-        // Get models and scenarios
-        const modelsInput = options.models || await question(
-          chalk.cyan('Models to compare (comma-separated): ')
-        );
-        const models = modelsInput.split(',').map((m: string) => m.trim());
+        // Auto-discover available models from uploaded videos
+        const videoResponse = await fetch('http://localhost:3000/api/videos');
+        if (!videoResponse.ok) {
+          throw new Error(`Failed to fetch video library: ${videoResponse.status}`);
+        }
+        const videos = await videoResponse.json();
+        
+        const availableModels = Array.from(new Set(
+          videos.filter((v: any) => v.modelName).map((v: any) => v.modelName)
+        ));
+        
+        if (availableModels.length === 0) {
+          console.log(chalk.red('No videos with model names found in library.'));
+          console.log(chalk.gray('Upload videos with model names first using: ./evalctl upload-videos --dir <directory> --model <model-name>'));
+          return;
+        }
+        
+        console.log(chalk.white(`Auto-discovered models: ${chalk.green(availableModels.join(', '))}`));
+        
+        // Allow manual override if models option is provided
+        const models = options.models ? 
+          options.models.split(',').map((m: string) => m.trim()) : 
+          availableModels;
         
         const scenariosInput = options.scenarios || await question(
           chalk.cyan('Scenarios (comma-separated): ')
@@ -1356,7 +1605,7 @@ program
         // Get experiment
         const experiment = await prisma.experiment.findUnique({
           where: { slug: experimentSlug },
-          include: { comparisons: true }
+          include: { twoVideoComparisonTasks: true }
         });
         
         if (!experiment) {
@@ -1395,16 +1644,27 @@ program
           const videosWithMetadata = await videoResponse.json();
           
           const config = experiment.config as any;
-          const models = config?.models || [];
           const scenarios = config?.scenarios || [];
+          
+          // Auto-discover available models from uploaded videos
+          const availableModels = Array.from(new Set(
+            videosWithMetadata.filter((v: any) => v.modelName).map((v: any) => v.modelName)
+          ));
+          
+          if (availableModels.length === 0) {
+            console.log(chalk.red('No videos with model names found in library.'));
+            return;
+          }
+          
+          console.log(chalk.white(`Auto-discovered models: ${chalk.green(availableModels.join(', '))}`));
           
           const comparisons: any[] = [];
           
           for (const scenario of scenarios) {
-            for (let i = 0; i < models.length; i++) {
-              for (let j = i + 1; j < models.length; j++) {
-                const modelA = models[i];
-                const modelB = models[j];
+            for (let i = 0; i < availableModels.length; i++) {
+              for (let j = i + 1; j < availableModels.length; j++) {
+                const modelA = availableModels[i];
+                const modelB = availableModels[j];
                 
                 // Find videos by metadata first, fallback to filename patterns
                 let videoA = videosWithMetadata.find((v: any) => 
@@ -1454,8 +1714,20 @@ program
           }
           
           if (comparisons.length > 0) {
+            // Update experiment config with discovered models
+            await prisma.experiment.update({
+              where: { id: experiment.id },
+              data: {
+                config: {
+                  ...config,
+                  models: availableModels,
+                  scenarios
+                }
+              }
+            });
+            
             // Create comparisons
-            await prisma.comparison.createMany({
+            await prisma.twoVideoComparisonTask.createMany({
               data: comparisons.map(comp => ({
                 scenarioId: comp.scenarioId,
                 modelA: comp.modelA,
