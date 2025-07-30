@@ -20,7 +20,7 @@ function getTigrisClient(): S3Client {
   return tigrisClient;
 }
 
-function getBucketName(): string {
+export function getBucketName(): string {
   if (!process.env.TIGRIS_BUCKET_NAME) {
     throw new Error('TIGRIS_BUCKET_NAME environment variable is not set');
   }
