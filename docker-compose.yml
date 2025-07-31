@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: owl-eval-postgres
+    environment:
+      POSTGRES_DB: owl_eval
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Next.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: owl-eval-app
+    environment:
+      # Node Environment
+      - NODE_ENV=production
+      
+      # Database
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/owl_eval
+      
+      # Application
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      
+      # Required Stack Auth (must be set)
+      - NEXT_PUBLIC_STACK_PROJECT_ID=${NEXT_PUBLIC_STACK_PROJECT_ID}
+      - NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}
+      - STACK_SECRET_SERVER_KEY=${STACK_SECRET_SERVER_KEY}
+      
+      # Optional AWS S3 (for video storage)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      
+      # Optional Prolific Integration
+      - PROLIFIC_API_TOKEN=${PROLIFIC_API_TOKEN}
+      
+      # Storage Configuration
+      - DATA_DIR=/app/data
+      - VIDEO_UPLOAD_DIR=/app/uploads/videos
+      
+      # Evaluation Configuration
+      - TARGET_EVALUATIONS_PER_COMPARISON=${TARGET_EVALUATIONS_PER_COMPARISON:--1}
+      - MAX_VIDEO_SIZE_MB=${MAX_VIDEO_SIZE_MB:-100}
+      - SUPPORTED_VIDEO_FORMATS=${SUPPORTED_VIDEO_FORMATS:-mp4,webm,mov}
+      
+      # Development/Logging
+      - DEBUG_MODE=${DEBUG_MODE:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data: 
