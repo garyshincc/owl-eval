@@ -8,14 +8,22 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
-COPY eval/frontend/package.json eval/frontend/package-lock.json* ./
-RUN npm ci --only=production
+COPY package.json package-lock.json* ./
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci --ignore-scripts
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY eval/frontend/ .
+COPY . .
+
+# Set build-time environment variables
+ENV NEXT_PUBLIC_STACK_PROJECT_ID=dummy
+ENV NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=dummy
+ENV STACK_SECRET_SERVER_KEY=dummy
+ENV DATABASE_URL=postgresql://dummy
+ENV NODE_ENV=production
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -27,9 +35,9 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 # Uncomment the following line in case you want to disable telemetry during runtime.
-# ENV NEXT_TELEMETRY_DISABLED 1
+# ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -50,9 +58,9 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
+ENV PORT=3000
 # set hostname to localhost
-ENV HOSTNAME "0.0.0.0"
+ENV HOSTNAME="0.0.0.0"
 
 # server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output
