@@ -2868,6 +2868,181 @@ program
   });
 
 program
+  .command('db:sql <query>')
+  .description('Execute a custom SQL query')
+  .option('-f, --format <format>', 'Output format (table|json)', 'table')
+  .action(async (query, options) => {
+    await requireAuth('execute SQL query', async () => {
+      try {
+        console.log(chalk.blue(`\n🔍 Executing: ${chalk.white(query)}\n`));
+        
+        const result = await prisma.$queryRawUnsafe(query);
+        
+        if (Array.isArray(result) && result.length > 0) {
+          if (options.format === 'json') {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            // Table format
+            console.log(chalk.blue.bold('📋 Results:\n'));
+            console.table(result);
+          }
+          console.log(chalk.gray(`\n(${result.length} row${result.length === 1 ? '' : 's'})`));
+        } else if (Array.isArray(result) && result.length === 0) {
+          console.log(chalk.gray('No results returned'));
+        } else {
+          console.log(chalk.green('Query executed successfully'));
+          if (result) {
+            console.log(chalk.gray('Result:'), result);
+          }
+        }
+        
+      } catch (error) {
+        console.error(chalk.red('❌ Query failed:'), error);
+      }
+    });
+  });
+
+program
+  .command('whoami')
+  .description('Show current user information including Stack Auth User ID')
+  .action(async () => {
+    await requireAuth('show user info', async (auth) => {
+      console.log(chalk.blue.bold('\n👤 Current User Information\n'));
+      console.log(chalk.white('Email:'), chalk.cyan(auth.email || 'Unknown'));
+      console.log(chalk.white('Stack Auth User ID:'), chalk.yellow(auth.userId || auth.id));
+      console.log(chalk.white('Admin Status:'), auth.isAdmin ? chalk.green('Yes') : chalk.gray('No'));
+      
+      // Show organizations
+      try {
+        const userOrganizations = await getUserOrganizations(auth.userId || auth.id);
+        if (userOrganizations.length > 0) {
+          console.log(chalk.white('\nOrganizations:'));
+          userOrganizations.forEach((membership) => {
+            const org = membership.organization;
+            console.log(chalk.gray(`  • ${org.name} (${org.slug}) - ${membership.role}`));
+          });
+        } else {
+          console.log(chalk.gray('\nNo organizations found'));
+        }
+      } catch (error) {
+        console.log(chalk.red('\nError fetching organizations:'), error);
+      }
+    });
+  });
+
+program
+  .command('sync-stack-auth [organizationSlug]')
+  .description('Sync Stack Auth team members to organization database')
+  .action(async (organizationSlug) => {
+    await requireAuth('sync Stack Auth team members', async (auth) => {
+      try {
+        // Get organization to sync
+        let organizationId;
+        if (organizationSlug) {
+          const org = await prisma.organization.findUnique({
+            where: { slug: organizationSlug }
+          });
+          if (!org) {
+            console.log(chalk.red(`Organization "${organizationSlug}" not found.`));
+            return;
+          }
+          organizationId = org.id;
+        } else {
+          organizationId = await selectOrganization(auth);
+        }
+
+        console.log(chalk.blue(`\n🔄 Syncing Stack Auth team members...`));
+        console.log(chalk.gray(`🏢 Organization ID: ${organizationId}`));
+        
+        // Import and call the CLI-compatible sync function
+        const { syncStackAuthTeamToOrganization } = await import('./stack-auth-sync-cli');
+        
+        const result = await syncStackAuthTeamToOrganization(organizationId);
+        
+        if (!result.success) {
+          console.log(chalk.red(`❌ Sync failed: ${result.error}`));
+          return;
+        }
+        
+        console.log(chalk.green(`\n✅ Successfully synced Stack Auth team for: ${chalk.white(result.organization.name)}`));
+        console.log(chalk.gray(`   Stack Team ID: ${result.stackTeam.id}`));
+        console.log(chalk.gray(`   Total Stack Auth members: ${result.stackTeam.totalMembers}`));
+        console.log(chalk.gray(`   Existing database members: ${result.sync.existingMembers}`));
+        console.log(chalk.gray(`   New members added: ${result.sync.addedMembers}`));
+        
+        if (result.sync.newMembers.length > 0) {
+          console.log(chalk.blue('\n📋 New members added:'));
+          result.sync.newMembers.forEach((member: any) => {
+            console.log(chalk.white(`  • ${member.email} (${member.role})`));
+          });
+        } else {
+          console.log(chalk.gray('\n📋 All Stack Auth team members are already in the database'));
+        }
+
+      } catch (error) {
+        console.error(chalk.red('Error syncing Stack Auth teams:'), error);
+      }
+    });
+  });
+
+program
+  .command('add-member <stackUserId> [role]')
+  .description('Add a Stack Auth user to your organization by their User ID')
+  .action(async (stackUserId, role = 'ADMIN') => {
+    await requireAuth('add organization member', async (auth) => {
+      try {
+        const organizationId = await selectOrganization(auth);
+        
+        // Get organization details
+        const org = await prisma.organization.findUnique({
+          where: { id: organizationId }
+        });
+        
+        if (!org) {
+          console.log(chalk.red('Organization not found'));
+          return;
+        }
+
+        console.log(chalk.blue(`\n👥 Adding member to: ${chalk.white(org.name)}`));
+        console.log(chalk.gray(`   Stack User ID: ${stackUserId}`));
+        console.log(chalk.gray(`   Role: ${role}`));
+        
+        // Check if user is already a member
+        const existingMember = await prisma.organizationMember.findUnique({
+          where: {
+            organizationId_stackUserId: {
+              organizationId: organizationId,
+              stackUserId: stackUserId.trim()
+            }
+          }
+        });
+        
+        if (existingMember) {
+          console.log(chalk.yellow(`⚠️  User is already a member of this organization with role: ${existingMember.role}`));
+          return;
+        }
+
+        // Add the member
+        const member = await prisma.organizationMember.create({
+          data: {
+            organizationId: organizationId,
+            stackUserId: stackUserId.trim(),
+            role: role.toUpperCase() as any
+          }
+        });
+
+        console.log(chalk.green(`\n✅ Successfully added user to ${org.name}`));
+        console.log(chalk.gray(`   Member ID: ${member.id}`));
+        console.log(chalk.gray(`   Role: ${member.role}`));
+        console.log(chalk.gray(`   Stack User ID: ${member.stackUserId}`));
+
+      } catch (error) {
+        console.error(chalk.red('Error adding member:'), error);
+      }
+    });
+  });
+
+program
   .command('logout')
   .description('Clear stored authentication')
   .action(async () => {
