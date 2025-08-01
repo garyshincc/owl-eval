@@ -3,10 +3,10 @@ import { syncStackAuthTeamToOrganization } from '@/lib/stack-auth-sync'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { organizationId: string } }
+  { params }: { params: Promise<{ organizationId: string }> }
 ) {
   try {
-    const organizationId = params.organizationId
+    const { organizationId } = await params
     const result = await syncStackAuthTeamToOrganization(organizationId)
     
     if (!result.success) {

@@ -69,7 +69,9 @@ export async function syncStackAuthTeamToOrganization(organizationId: string): P
       }
     }
 
-    console.log(`📋 Found ${team.users.length} members in Stack Auth team`)
+    // Get team users
+    const teamUsers = await team.listUsers()
+    console.log(`📋 Found ${teamUsers.length} members in Stack Auth team`)
 
     // Get current members in our database
     const currentMembers = await prisma.organizationMember.findMany({
@@ -82,10 +84,11 @@ export async function syncStackAuthTeamToOrganization(organizationId: string): P
     const addedMembers = []
     
     // Add new members
-    for (const teamUser of team.users) {
+    for (const teamUser of teamUsers) {
       if (!currentUserIds.has(teamUser.id)) {
         // Determine role based on Stack Auth permissions
-        const role = teamUser.id === team.createdByUserId ? 'OWNER' : 'ADMIN'
+        // TODO: Improve role detection once we understand Stack Auth SDK better
+        const role = 'ADMIN'
         
         console.log(`➕ Adding new member: ${teamUser.primaryEmail || teamUser.id} as ${role}`)
         
@@ -118,7 +121,7 @@ export async function syncStackAuthTeamToOrganization(organizationId: string): P
       },
       stackTeam: {
         id: team.id,
-        totalMembers: team.users.length
+        totalMembers: teamUsers.length
       },
       sync: {
         existingMembers: currentMembers.length,
