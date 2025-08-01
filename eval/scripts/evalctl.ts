@@ -2,8 +2,10 @@
 
 // Load environment variables FIRST before ANY imports
 import * as dotenv from 'dotenv';
+
+const env = process.env.EVALCTL_ENV || 'development';
+dotenv.config({ path: `.env.${env}` });
 dotenv.config({ path: '.env.local' });
-dotenv.config({ path: '.env.development' });
 dotenv.config({ path: '.env' });
 
 import { Command } from 'commander';
@@ -21,11 +23,24 @@ import { prolificService } from '../frontend/src/lib/services/prolific';
 import { getUserOrganizations } from './cli-organization';
 import { uploadVideoToTigris } from '../frontend/src/lib/storage';
 
+// Show environment info for non-help commands
+const isHelpCommand = process.argv.includes('--help') || process.argv.includes('-h');
+if (!isHelpCommand && process.argv.length > 2) {
+  console.log(chalk.gray(`[${env.toUpperCase()}] Using .env.${env}`));
+}
+
 // Ensure DATABASE_URL is available
 if (!process.env.DATABASE_URL) {
   console.error(chalk.red('❌ DATABASE_URL not found in environment variables'));
   console.error(chalk.yellow('💡 Make sure .env.development or .env.local contains DATABASE_URL'));
   process.exit(1);
+}
+
+// Get base URL for API calls - automatically determined by EVALCTL_ENV
+function getBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || 
+         process.env.NEXT_PUBLIC_BASE_URL || 
+         'http://localhost:3000';
 }
 
 
@@ -66,12 +81,13 @@ async function selectOrganization(auth: any): Promise<string> {
     console.log(chalk.white(`${index + 1}. ${org.name} (${org.slug}) - ${membership.role}`));
   });
   
-  const { rl, question } = getReadline();
+  const { rl: readlineInterface, question } = getReadline();
   const choice = await question(chalk.cyan('\nEnter organization number: '));
   const index = parseInt(choice) - 1;
   
-  // Close readline interface
-  rl.close();
+  // Close readline interface and reset global variable
+  readlineInterface.close();
+  rl = null;
   
   if (index < 0 || index >= userOrganizations.length) {
     console.log(chalk.red('❌ Invalid selection'));
@@ -185,7 +201,7 @@ program
         console.log(chalk.white('Group:'), chalk.yellow(experiment.group));
       }
       console.log(chalk.white('\nEvaluation URL:'), 
-        chalk.blue.underline(`localhost:3000/evaluate/${experiment.slug}`));
+        chalk.blue.underline(`${getBaseUrl().replace('http://', '').replace('https://', '')}/evaluate/${experiment.slug}`));
       
       console.log(chalk.gray('\nNext steps:'));
       console.log(chalk.gray('1. Upload videos using: ./evalctl upload-videos --dir <directory>'));
@@ -638,7 +654,7 @@ program
         console.log(chalk.blue.bold('\n📹 Video Library\n'));
         
         // Use new videos API with metadata support
-        let url = 'http://localhost:3000/api/videos';
+        let url = `${getBaseUrl()}/api/videos`;
         const params = new URLSearchParams();
         
         if (options.model) params.append('model', options.model);
@@ -712,7 +728,7 @@ program
         console.log(chalk.blue.bold('\n✏️  Bulk editing videos\n'));
         
         // Get videos to edit
-        let url = 'http://localhost:3000/api/videos';
+        let url = `${getBaseUrl()}/api/videos`;
         const params = new URLSearchParams();
         
         if (options.model) params.append('model', options.model);
@@ -787,7 +803,7 @@ program
         
         // Apply bulk edits
         const videoIds = videos.map((v: any) => v.id);
-        const bulkEditResponse = await fetch('http://localhost:3000/api/videos/bulk-edit', {
+        const bulkEditResponse = await fetch(`${getBaseUrl()}/api/videos/bulk-edit`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json'
@@ -1245,7 +1261,7 @@ program
         }
         
         // Get video library
-        const response = await fetch('http://localhost:3000/api/videos');
+        const response = await fetch(`${getBaseUrl()}/api/videos`);
         if (!response.ok) {
           throw new Error(`Failed to fetch video library: ${response.status}`);
         }
@@ -1487,7 +1503,7 @@ program
         const { question } = getReadline();
         
         // Auto-discover available models from uploaded videos
-        const videoResponse = await fetch('http://localhost:3000/api/videos');
+        const videoResponse = await fetch(`${getBaseUrl()}/api/videos`);
         if (!videoResponse.ok) {
           throw new Error(`Failed to fetch video library: ${videoResponse.status}`);
         }
@@ -1614,7 +1630,7 @@ program
         }
         
         // Get video library
-        const response = await fetch('http://localhost:3000/api/video-library');
+        const response = await fetch(`${getBaseUrl()}/api/video-library`);
         if (!response.ok) {
           throw new Error(`Failed to fetch video library: ${response.status}`);
         }
@@ -1637,7 +1653,7 @@ program
           console.log(chalk.blue('\n🤖 Auto-assigning videos based on metadata...\n'));
           
           // Use new video library API that supports metadata
-          const videoResponse = await fetch('http://localhost:3000/api/videos');
+          const videoResponse = await fetch(`${getBaseUrl()}/api/videos`);
           if (!videoResponse.ok) {
             throw new Error(`Failed to fetch video library: ${videoResponse.status}`);
           }
@@ -1749,7 +1765,7 @@ program
           console.log(chalk.blue('\n🎲 Random video assignment...\n'));
           
           // Get videos with metadata
-          const videoResponse = await fetch('http://localhost:3000/api/videos');
+          const videoResponse = await fetch(`${getBaseUrl()}/api/videos`);
           if (!videoResponse.ok) {
             throw new Error(`Failed to fetch video library: ${videoResponse.status}`);
           }
